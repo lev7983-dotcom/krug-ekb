@@ -96,17 +96,25 @@ class Handler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid=user_id(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":2})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":4,"database":"postgres" if DATABASE_URL else "sqlite"})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("SELECT c.*, EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved FROM cars c WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC",(uid,)).fetchall()
             return self.send_json([car_dict(r,r["faved"]) for r in rows])
+        if path=="/api/stats":
+            with connect() as db:
+                ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)",(NOW().isoformat(),)).fetchone()
+                ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone()
+            return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
+        if path=="/api/subscriptions":
+            with connect() as db: row=db.execute("SELECT 1 FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,)).fetchone()
+            return self.send_json({"urgent":bool(row)})
         if path=="/api/me":
             with connect() as db:
-                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers})
+                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions})
         if path=="/api/my-cars":
-            with connect() as db: rows=db.execute("SELECT * FROM cars WHERE owner_id=? ORDER BY id DESC",(uid,)).fetchall()
+            with connect() as db: rows=db.execute("SELECT * FROM cars WHERE owner_id=? AND status<>'deleted' ORDER BY id DESC",(uid,)).fetchall()
             return self.send_json([car_dict(r) for r in rows])
         if path=="/api/exchanges":
             with connect() as db:
@@ -154,7 +162,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error":"Маршрут не найден"},404)
         except (ValueError,TypeError,json.JSONDecodeError,sqlite3.IntegrityError) as e: return self.send_json({"error":str(e)},400)
     def do_DELETE(self):
-        m=re.fullmatch(r"/api/cars/(\d+)",urlparse(self.path).path); uid=user_id(self.headers)
+        path=urlparse(self.path).path; uid=user_id(self.headers)
+        if path=="/api/subscriptions":
+            with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,))
+            return self.send_json({"ok":True,"urgent":False})
+        m=re.fullmatch(r"/api/cars/(\d+)",path)
         if not m: return self.send_json({"error":"Маршрут не найден"},404)
         with connect() as db:
             cur=db.execute("UPDATE cars SET status='deleted',updated_at=? WHERE id=? AND owner_id=?",(NOW().isoformat(),int(m.group(1)),uid))
