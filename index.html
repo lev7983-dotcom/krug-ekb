@@ -264,5 +264,39 @@ async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krug
 async function showFavourites(){let r=await krugApi('/api/favourites');if(!r.ok)return toast('Не удалось загрузить избранное');let list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';document.getElementById('catalogCards').innerHTML=list.map(card).join('')||'<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}
 if(profileButtons[2])profileButtons[2].onclick=showFavourites;
 </script>
+<style>
+.btn.busy,.heart.busy{opacity:.55;pointer-events:none}.connection-note{position:fixed;left:14px;right:14px;top:12px;z-index:1000;padding:11px 14px;border-radius:16px;background:#fff4d8;color:#493915;font-size:13px;font-weight:700;box-shadow:0 8px 28px #0002}.connection-note[hidden]{display:none}
+</style>
+<script>
+// KRUG v16: consistent errors, guarded actions and Telegram launch diagnostics.
+const krugConnectionNote=document.createElement('div');krugConnectionNote.className='connection-note';krugConnectionNote.hidden=true;document.body.append(krugConnectionNote);
+function krugShowConnection(message){krugConnectionNote.textContent=message;krugConnectionNote.hidden=false;setTimeout(()=>krugConnectionNote.hidden=true,5000)}
+async function krugJson(url,options={}){
+  try{
+    let response=await krugApi(url,options),data={};
+    try{data=await response.json()}catch(_){data={}}
+    if(!response.ok){let message=data.error||(response.status===401?'Откройте КРУГ кнопкой внутри Telegram':'Сервер временно недоступен');let error=new Error(message);error.status=response.status;throw error}
+    return data;
+  }catch(error){
+    if(error.status===401)krugShowConnection(error.message);
+    throw error;
+  }
+}
+if(location.protocol!=='file:'&&!krugInitData)krugShowConnection('Просмотр доступен. Для избранного и публикации откройте КРУГ внутри Telegram.');
+window.addEventListener('offline',()=>krugShowConnection('Нет подключения к интернету. Данные сохранятся после восстановления связи.'));
+window.addEventListener('online',()=>{toast('Соединение восстановлено');krugLoadCars()});
+async function saveV2(e,b,id){
+  e.stopPropagation();if(!id||b.classList.contains('busy'))return;b.classList.add('busy');
+  try{let d=await krugJson(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!d.favourite;b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');await krugLoadProfile()}
+  catch(error){toast(error.message)}finally{b.classList.remove('busy')}
+}
+async function showFavourites(){try{let list=await krugJson('/api/favourites');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';document.getElementById('catalogCards').innerHTML=list.map(card).join('')||'<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}catch(error){toast(error.message)}}
+async function subscribe(b){
+  let button=b?.tagName?b:document.querySelector('#urgent [onclick="subscribe(this)"]');if(button?.classList.contains('busy'))return;button?.classList.add('busy');
+  try{await krugJson('/api/subscriptions',{method:krugSubscribed?'DELETE':'POST',body:krugSubscribed?undefined:'{}'});krugSubscribed=!krugSubscribed;paintSubscription();await krugLoadProfile();toast(krugSubscribed?'Уведомления о срочных авто включены':'Уведомления отключены')}
+  catch(error){toast(error.message)}finally{button?.classList.remove('busy')}
+}
+if(profileButtons[2])profileButtons[2].onclick=showFavourites;
+</script>
 </body>
 </html>
