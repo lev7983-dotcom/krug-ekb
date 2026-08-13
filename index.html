@@ -398,5 +398,14 @@ krugDraftNote.querySelector('button').onclick=()=>{localStorage.removeItem(KRUG_
 const krugResetBeforeDraft=krugResetListingForm;krugResetListingForm=function(){localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show');return krugResetBeforeDraft()};
 restoreKrugDraft();
 </script>
+<style>
+.listing-insights{display:flex;gap:8px;margin:8px 0 14px}.listing-insights span{flex:1;padding:9px 10px;border-radius:12px;background:#edf1eb;color:#465048;font-size:12px;font-weight:700}
+</style>
+<script>
+// KRUG v23: daily unique listing views and seller interest counters.
+const krugMyCarsBeforeInsights=showMyCars;showMyCars=async function(){
+  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}<div class="listing-insights"><span>👁 Просмотры: ${Number(c.views)||0}</span><span>♥ В избранном: ${Number(c.favourites_count)||0}</span></div>${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button>`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}};
+if(profileButtons[0])profileButtons[0].onclick=showMyCars;
+</script>
 </body>
 </html>

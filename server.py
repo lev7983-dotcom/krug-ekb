@@ -76,6 +76,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS subscriptions(id {generic_id}, telegram_user TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'urgent', created_at TEXT NOT NULL, UNIQUE(telegram_user,kind));
         CREATE TABLE IF NOT EXISTS exchanges(id {generic_id}, from_user TEXT NOT NULL, target_car_id {ref_id} NOT NULL, offered_car_id {ref_id}, message TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, FOREIGN KEY(target_car_id) REFERENCES cars(id) ON DELETE CASCADE, FOREIGN KEY(offered_car_id) REFERENCES cars(id) ON DELETE SET NULL);
         CREATE TABLE IF NOT EXISTS reports(id {generic_id}, reporter_id TEXT NOT NULL, car_id {ref_id} NOT NULL, reason TEXT NOT NULL, details TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, UNIQUE(reporter_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS car_views(viewer_id TEXT NOT NULL, car_id {ref_id} NOT NULL, view_day TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(viewer_id,car_id,view_day), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -206,7 +207,12 @@ class Handler(SimpleHTTPRequestHandler):
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
                     WHERE c.id=? AND (c.status='active' OR c.owner_id=?)""",(uid,int(detail.group(1)),uid)).fetchone()
             if not row: return self.send_json({"error":"Объявление не найдено"},404)
-            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid
+            with connect() as db:
+                if row["owner_id"]!=uid:
+                    try: db.execute("INSERT INTO car_views(viewer_id,car_id,view_day,created_at) VALUES(?,?,?,?) ON CONFLICT(viewer_id,car_id,view_day) DO NOTHING",(uid,int(detail.group(1)),NOW().date().isoformat(),NOW().isoformat()))
+                    except sqlite3.IntegrityError: pass
+                vr=db.execute("SELECT COUNT(*) AS count FROM car_views WHERE car_id=?",(int(detail.group(1)),)).fetchone(); favr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE car_id=?",(int(detail.group(1)),)).fetchone()
+            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid; data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]
             return self.send_json(data)
         if path=="/api/stats":
             with connect() as db:
@@ -231,7 +237,9 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions})
         if path=="/api/my-cars":
             if not self.require_auth(authenticated): return
-            with connect() as db: rows=db.execute("""SELECT c.*, (SELECT COUNT(*) FROM reports r WHERE r.car_id=c.id) AS report_count
+            with connect() as db: rows=db.execute("""SELECT c.*, (SELECT COUNT(*) FROM reports r WHERE r.car_id=c.id) AS report_count,
+                (SELECT COUNT(*) FROM car_views v WHERE v.car_id=c.id) AS views,
+                (SELECT COUNT(*) FROM favourites f WHERE f.car_id=c.id) AS favourites_count
                 FROM cars c WHERE c.owner_id=? AND c.status<>'deleted' ORDER BY c.id DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r) for r in rows])
         if path=="/api/exchanges":
