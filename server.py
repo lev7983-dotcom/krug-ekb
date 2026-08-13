@@ -1,5 +1,5 @@
 """KRUG marketplace API: users, listings, favourites, subscriptions and exchanges."""
-import json, os, re, sqlite3, threading
+import json, os, re, sqlite3, threading, time
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +13,15 @@ DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=os.environ.get("BOT_TOKEN","")
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
 NOW=lambda: datetime.now(timezone.utc)
+RATE_BUCKETS={}; RATE_LOCK=threading.Lock()
+
+def rate_allowed(key,limit,window):
+    now=time.time()
+    with RATE_LOCK:
+        recent=[x for x in RATE_BUCKETS.get(key,[]) if now-x<window]
+        if len(recent)>=limit: return False
+        recent.append(now); RATE_BUCKETS[key]=recent
+        return True
 
 class PGCursor:
     def __init__(self,cursor,lastrowid=None): self.cursor=cursor; self.lastrowid=lastrowid
@@ -171,6 +180,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db: db.execute("INSERT INTO users(id,first_name,username,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,updated_at=excluded.updated_at",(uid,first,username,now,now))
                 return self.send_json({"ok":True,"user":uid})
             if path=="/api/cars":
+                if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
                 name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
@@ -198,6 +208,7 @@ class Handler(SimpleHTTPRequestHandler):
             report=re.fullmatch(r"/api/cars/(\d+)/report",path)
             if report:
                 cid=int(report.group(1)); reason=str(data.get("reason") or "other")[:40]; details=str(data.get("details") or "").strip()[:500]
+                if not rate_allowed((uid,"report"),15,3600): return self.send_json({"error":"Слишком много жалоб. Попробуйте позже"},429)
                 allowed={"fraud","wrong_info","sold","duplicate","other"}
                 if reason not in allowed: return self.send_json({"error":"Выберите причину жалобы"},400)
                 with connect() as db:
