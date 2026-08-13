@@ -166,7 +166,12 @@ def setup_telegram_webhook():
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**kw): super().__init__(*a,directory=str(ROOT),**kw)
     def send_json(self,data,status=200):
-        raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
+        raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Referrer-Policy","no-referrer"); self.send_header("Permissions-Policy","camera=(), microphone=(), geolocation=()"); self.end_headers(); self.wfile.write(raw)
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options","nosniff")
+        self.send_header("Referrer-Policy","no-referrer")
+        self.send_header("X-Frame-Options","SAMEORIGIN")
+        super().end_headers()
     def read_json(self):
         n=int(self.headers.get("Content-Length","0"))
         if n>12_000_000: raise ValueError("Слишком большой запрос")
