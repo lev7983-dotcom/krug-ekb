@@ -365,5 +365,23 @@ carVin.addEventListener('input',()=>carVin.value=carVin.value.toUpperCase().repl
 const krugEditBeforeSpecs=editCar;editCar=async function(id){await krugEditBeforeSpecs(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||''}catch(_){}}
 const krugOpenBeforeSpecs=openCarV3;openCarV3=async function(...args){await krugOpenBeforeSpecs(...args);let d=krugOpenedDetail;if(!d)return;let specs=[d.body_type,d.transmission,d.drive,d.vin?`VIN: ${d.vin}`:''].filter(Boolean);if(specs.length)detailDescription.textContent=`${specs.join(' · ')}\n\n${d.description||'Описание не указано'}`};
 </script>
+<style>
+.auto-filters{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:10px 0}.auto-filters select,.auto-filters button{min-width:0;border:1px solid #dde2dc;background:#fff;border-radius:14px;padding:11px 10px;font:inherit;color:#222}.auto-filters .filter-reset{color:#087b69;font-weight:700}.filter-result{font-size:13px;color:#69706b;margin:3px 2px 12px}
+</style>
+<script>
+// KRUG v21: filters by vehicle specifications.
+const krugFilterBox=document.createElement('div');krugFilterBox.className='auto-filters';krugFilterBox.innerHTML=`<select id="filterTransmission" aria-label="Коробка"><option value="">Любая коробка</option><option>Автомат</option><option>Механика</option><option>Робот</option><option>Вариатор</option></select><select id="filterBody" aria-label="Кузов"><option value="">Любой кузов</option><option>Седан</option><option>Хэтчбек</option><option>Универсал</option><option>Кроссовер</option><option>Внедорожник</option><option>Минивэн</option><option>Купе</option><option>Пикап</option></select><select id="filterDrive" aria-label="Привод"><option value="">Любой привод</option><option>Передний</option><option>Задний</option><option>Полный</option></select><button class="filter-reset" type="button">Сбросить фильтры</button>`;
+const krugFilterResult=document.createElement('div');krugFilterResult.className='filter-result';document.querySelector('#catalog .search-panel').after(krugFilterBox,krugFilterResult);
+const filterTransmission=document.getElementById('filterTransmission'),filterBody=document.getElementById('filterBody'),filterDrive=document.getElementById('filterDrive');
+function applyCatalog(){
+  let q=(catalogSearch?.value||'').trim().toLowerCase(),list=cars.filter(c=>String(c.name).toLowerCase().includes(q));
+  if(catalogRange!=='all'){if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);else{let[a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}}
+  if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
+  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;
+}
+[filterTransmission,filterBody,filterDrive].forEach(x=>x.addEventListener('change',applyCatalog));
+krugFilterBox.querySelector('.filter-reset').onclick=()=>{catalogSearch.value='';catalogRange='all';document.querySelectorAll('#prices .chip').forEach(x=>x.classList.toggle('active',x.dataset.range==='all'));filterTransmission.value='';filterBody.value='';filterDrive.value='';catalogSort.value='new';applyCatalog()};
+applyCatalog();
+</script>
 </body>
 </html>
