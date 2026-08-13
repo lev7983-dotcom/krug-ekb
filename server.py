@@ -145,9 +145,11 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json([car_dict(r) for r in rows])
         if path=="/api/exchanges":
             with connect() as db:
-                rows=db.execute("""SELECT e.*, target.name AS target_name, offered.name AS offered_name
+                rows=db.execute("""SELECT e.*, target.name AS target_name, target.owner_id AS target_owner_id,
+                    offered.name AS offered_name, sender.first_name AS sender_name, sender.username AS sender_username
                     FROM exchanges e JOIN cars target ON target.id=e.target_car_id
                     LEFT JOIN cars offered ON offered.id=e.offered_car_id
+                    LEFT JOIN users sender ON sender.id=e.from_user
                     WHERE e.from_user=? OR target.owner_id=? ORDER BY e.id DESC""",(uid,uid)).fetchall()
             return self.send_json([dict(r) for r in rows])
         return super().do_GET()
@@ -184,7 +186,12 @@ class Handler(SimpleHTTPRequestHandler):
             if path=="/api/exchanges":
                 target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None
                 with connect() as db:
-                    if not db.execute("SELECT 1 FROM cars WHERE id=? AND status='active'",(target,)).fetchone(): return self.send_json({"error":"Объявление не найдено"},404)
+                    target_row=db.execute("SELECT owner_id FROM cars WHERE id=? AND status='active'",(target,)).fetchone()
+                    if not target_row: return self.send_json({"error":"Объявление не найдено"},404)
+                    target_owner=target_row["owner_id"] if DATABASE_URL else target_row[0]
+                    if target_owner==uid: return self.send_json({"error":"Нельзя предложить обмен самому себе"},400)
+                    if not offered or not db.execute("SELECT 1 FROM cars WHERE id=? AND owner_id=? AND status='active'",(offered,uid)).fetchone(): return self.send_json({"error":"Выберите своё активное объявление"},400)
+                    if db.execute("SELECT 1 FROM exchanges WHERE from_user=? AND target_car_id=? AND status='new'",(uid,target)).fetchone(): return self.send_json({"error":"Предложение уже отправлено"},409)
                     db.execute("INSERT INTO exchanges(from_user,target_car_id,offered_car_id,message,created_at) VALUES(?,?,?,?,?)",(uid,target,offered,str(data.get("message", ""))[:500],now))
                 return self.send_json({"ok":True},201)
             return self.send_json({"error":"Маршрут не найден"},404)
@@ -201,7 +208,16 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
     def do_PUT(self):
         try:
-            m=re.fullmatch(r"/api/cars/(\d+)",urlparse(self.path).path); data=self.read_json(); uid=user_id(self.headers,data=data)
+            path=urlparse(self.path).path; data=self.read_json(); uid=user_id(self.headers,data=data)
+            exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
+            if exchange:
+                status={"accept":"accepted","reject":"rejected"}.get(data.get("action"))
+                if not status: return self.send_json({"error":"Неизвестное действие"},400)
+                with connect() as db:
+                    cur=db.execute("""UPDATE exchanges SET status=? WHERE id=? AND status='new'
+                        AND EXISTS(SELECT 1 FROM cars WHERE cars.id=exchanges.target_car_id AND cars.owner_id=?)""",(status,int(exchange.group(1)),uid))
+                return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
+            m=re.fullmatch(r"/api/cars/(\d+)",path)
             if not m: return self.send_json({"error":"Маршрут не найден"},404)
             status={"archive":"archived","activate":"active"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
