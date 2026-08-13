@@ -190,7 +190,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":6,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":7,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -253,6 +253,8 @@ class Handler(SimpleHTTPRequestHandler):
                 subscriptions=db.execute("SELECT kind,created_at FROM subscriptions WHERE telegram_user=? ORDER BY created_at",(uid,)).fetchall()
                 exchanges=db.execute("SELECT * FROM exchanges WHERE from_user=? OR EXISTS(SELECT 1 FROM cars WHERE cars.id=exchanges.target_car_id AND cars.owner_id=?) ORDER BY id",(uid,uid)).fetchall()
             return self.send_json({"exported_at":NOW().isoformat(),"user":dict(user) if user else None,"cars":[car_dict(r) for r in cars_rows],"favourites":[dict(r) for r in favourites],"subscriptions":[dict(r) for r in subscriptions],"exchanges":[dict(r) for r in exchanges]})
+        if path.endswith((".py",".db",".sqlite",".yaml",".yml",".txt")) or path.startswith("/.git"):
+            return self.send_json({"error":"Not found"},404)
         return super().do_GET()
     def do_POST(self):
         try:
