@@ -8,31 +8,67 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT=Path(__file__).resolve().parent
 DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
+DATABASE_URL=os.environ.get("DATABASE_URL","")
 NOW=lambda: datetime.now(timezone.utc)
 
+class PGCursor:
+    def __init__(self,cursor,lastrowid=None): self.cursor=cursor; self.lastrowid=lastrowid
+    def fetchone(self): return self.cursor.fetchone()
+    def fetchall(self): return self.cursor.fetchall()
+    @property
+    def rowcount(self): return self.cursor.rowcount
+
+class PGConnection:
+    def __init__(self):
+        import psycopg
+        from psycopg.rows import dict_row
+        self.db=psycopg.connect(DATABASE_URL,row_factory=dict_row)
+    def execute(self,sql,params=()):
+        sql=sql.replace("?","%s")
+        if sql.startswith("INSERT OR IGNORE INTO subscriptions"):
+            sql=sql.replace("INSERT OR IGNORE","INSERT",1)+" ON CONFLICT(telegram_user,kind) DO NOTHING"
+        wants_id=sql.lstrip().startswith("INSERT INTO cars(") and "RETURNING" not in sql
+        cur=self.db.execute(sql+(" RETURNING id" if wants_id else ""),params)
+        last=cur.fetchone()["id"] if wants_id else None
+        return PGCursor(cur,last)
+    def executemany(self,sql,rows): return self.db.executemany(sql.replace("?","%s"),rows)
+    def executescript(self,sql):
+        for statement in sql.split(";"):
+            if statement.strip(): self.db.execute(statement)
+    def __enter__(self): return self
+    def __exit__(self,typ,val,tb):
+        self.db.commit() if typ is None else self.db.rollback(); self.db.close()
+
 def connect():
+    if DATABASE_URL: return PGConnection()
     db=sqlite3.connect(DB); db.row_factory=sqlite3.Row; db.execute("PRAGMA foreign_keys=ON"); return db
 
 def add_column(db,table,column,definition):
+    if DATABASE_URL:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}"); return
     if column not in {r[1] for r in db.execute(f"PRAGMA table_info({table})")}:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 def init_db():
     DB.parent.mkdir(parents=True,exist_ok=True)
     with connect() as db:
-        db.executescript("""
+        car_id="BIGSERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY"
+        generic_id="BIGSERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY"
+        ref_id="BIGINT" if DATABASE_URL else "INTEGER"
+        db.executescript(f"""
         CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, first_name TEXT NOT NULL, username TEXT DEFAULT '', role TEXT NOT NULL DEFAULT 'private', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS cars(id INTEGER PRIMARY KEY, name TEXT NOT NULL, price INTEGER NOT NULL, year INTEGER NOT NULL, km TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'Продажа', urgent INTEGER NOT NULL DEFAULT 0, pos TEXT NOT NULL DEFAULT '50% 50%', description TEXT DEFAULT '', phone TEXT DEFAULT '', created_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS favourites(user_id TEXT NOT NULL, car_id INTEGER NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
-        CREATE TABLE IF NOT EXISTS subscriptions(id INTEGER PRIMARY KEY, telegram_user TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'urgent', created_at TEXT NOT NULL, UNIQUE(telegram_user,kind));
-        CREATE TABLE IF NOT EXISTS exchanges(id INTEGER PRIMARY KEY, from_user TEXT NOT NULL, target_car_id INTEGER NOT NULL, offered_car_id INTEGER, message TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, FOREIGN KEY(target_car_id) REFERENCES cars(id) ON DELETE CASCADE, FOREIGN KEY(offered_car_id) REFERENCES cars(id) ON DELETE SET NULL);
+        CREATE TABLE IF NOT EXISTS cars(id {car_id}, name TEXT NOT NULL, price INTEGER NOT NULL, year INTEGER NOT NULL, km TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'Продажа', urgent INTEGER NOT NULL DEFAULT 0, pos TEXT NOT NULL DEFAULT '50% 50%', description TEXT DEFAULT '', phone TEXT DEFAULT '', created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS favourites(user_id TEXT NOT NULL, car_id {ref_id} NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS subscriptions(id {generic_id}, telegram_user TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'urgent', created_at TEXT NOT NULL, UNIQUE(telegram_user,kind));
+        CREATE TABLE IF NOT EXISTS exchanges(id {generic_id}, from_user TEXT NOT NULL, target_car_id {ref_id} NOT NULL, offered_car_id {ref_id}, message TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, FOREIGN KEY(target_car_id) REFERENCES cars(id) ON DELETE CASCADE, FOREIGN KEY(offered_car_id) REFERENCES cars(id) ON DELETE SET NULL);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
         add_column(db,"cars","urgent_until","TEXT DEFAULT NULL")
         add_column(db,"cars","updated_at","TEXT DEFAULT NULL")
         add_column(db,"cars","image","TEXT DEFAULT ''")
-        if not db.execute("SELECT COUNT(*) FROM cars").fetchone()[0]:
+        count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
+        if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
             now=NOW().isoformat(); urgent=(NOW()+timedelta(hours=24)).isoformat()
             db.executemany("INSERT INTO cars(name,price,year,km,type,urgent,pos,created_at,updated_at,urgent_until) VALUES(?,?,?,?,?,?,?,?,?,?)",[(*x,now,now,urgent if x[5] else None) for x in seed])
@@ -66,7 +102,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json([car_dict(r,r["faved"]) for r in rows])
         if path=="/api/me":
             with connect() as db:
-                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); listings=db.execute("SELECT COUNT(*) FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone()[0]; favs=db.execute("SELECT COUNT(*) FROM favourites WHERE user_id=?",(uid,)).fetchone()[0]; offers=db.execute("SELECT COUNT(*) FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone()[0]
+                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]
             return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers})
         if path=="/api/my-cars":
             with connect() as db: rows=db.execute("SELECT * FROM cars WHERE owner_id=? ORDER BY id DESC",(uid,)).fetchall()
