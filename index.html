@@ -28,7 +28,7 @@
 <main class="app">
   <section class="screen active" id="home">
     <header class="top"><div class="brand">КРУГ<i></i></div><button class="city">⌖ Екатеринбург</button><button class="icon-btn">⌕</button></header>
-    <div class="hero"><img src="krug-hero.png" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
+    <div class="hero"><img src="assets/krug-hero.png" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
     <div class="section"><div class="section-head"><h2>Что ищем?</h2></div><div class="modes"><button class="mode active" onclick="setMode(this,'Все')">Купить</button><button class="mode" onclick="setMode(this,'Обмен')">Обмен</button><button class="mode" onclick="go('urgent')">Срочно ⚡</button></div></div>
     <div class="section"><div class="section-head"><h2>Сейчас в городе</h2><button class="link" onclick="go('catalog')">Все объявления</button></div><div class="cards" id="homeCards"></div></div>
     <div class="section"><div class="urgent-banner" id="homeSub"><span class="pulse"></span><h2>Срочные авто</h2><p>Получайте уведомление, когда в Екатеринбурге появляется автомобиль, который хотят продать сегодня.</p><button class="btn lime" onclick="subscribe(this)">Подписаться</button></div></div>
@@ -82,6 +82,22 @@ function toast(t){let x=document.getElementById('toast');x.textContent=t;x.class
 function openCar(n,p,pos){document.getElementById('detailName').textContent=n;document.getElementById('detailPrice').textContent=rub(p);document.getElementById('detailImg').src=hero;document.getElementById('detailImg').style.objectPosition=pos;document.getElementById('modal').classList.add('open')}
 function closeModal(){document.getElementById('modal').classList.remove('open')}
 window.Telegram?.WebApp?.ready();window.Telegram?.WebApp?.expand();
+</script>
+<script>
+// KRUG v2: persistent user session, favourites and validated listings.
+const krugTgUser=window.Telegram?.WebApp?.initDataUnsafe?.user;
+const krugUserId=String(krugTgUser?.id||localStorage.getItem('krug_user')||'local-user');
+localStorage.setItem('krug_user',krugUserId);
+const krugApi=(url,options={})=>fetch(url,{...options,headers:{'Content-Type':'application/json','X-Krug-User':krugUserId,...options.headers}});
+function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
+async function krugLoadCars(){if(location.protocol==='file:')return;try{let r=await krugApi('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll();await krugLoadProfile()}catch(e){toast('Не удалось обновить объявления')}}
+async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');krugLoadProfile()}
+let krugOpenedCar=0;
+function openCarV2(id,n,p,pos){krugOpenedCar=id;openCar(n,p,pos)}
+async function subscribe(b){if(location.protocol!=='file:')await krugApi('/api/subscriptions',{method:'POST',body:'{}'});b.textContent='✓ Вы подписаны';b.closest('.urgent-banner')?.classList.add('subscribed');toast('Подписка на срочные авто включена')}
+async function publish(){let active=document.querySelector('.type-card.active').textContent;let data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно')};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok){toast(d.error||'Проверьте данные');return}toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');await krugLoadCars();setTimeout(()=>go('catalog'),700)}
+async function krugLoadProfile(){let u=krugTgUser||{first_name:'Пользователь',username:''};await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});let r=await krugApi('/api/me'),d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.offers}
+krugLoadCars();
 </script>
 </body>
 </html>
