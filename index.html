@@ -50,7 +50,7 @@
   <nav class="nav"><button class="active" data-go="home"><span>⌂</span>Главная</button><button data-go="catalog"><span>▤</span>Авто</button><button data-go="create"><span>＋</span>Подать</button><button data-go="urgent"><span>⚡</span>Срочно</button><button data-go="profile"><span>◉</span>Профиль</button></nav>
 </main>
 <div class="toast" id="toast">Готово</div>
-<div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b>2018</b></div><div class="spec">Пробег<b>86 000 км</b></div><div class="spec">Коробка<b>Автомат</b></div></div><button class="btn lime" onclick="toast('Продавец получил ваш запрос')">Написать продавцу</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
+<div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta" id="detailSeller">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b id="detailYear">—</b></div><div class="spec">Пробег<b id="detailKm">—</b></div><div class="spec">Сделка<b id="detailType">—</b></div></div><div class="panel" id="detailDescription" style="margin:0 0 14px;padding:14px;line-height:1.5">Описание не указано</div><button class="btn lime" id="sellerContact" onclick="contactSeller()">Связаться с продавцом</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
 const hero='krug-hero.png';
@@ -153,6 +153,26 @@ function showFavourites(){go('catalog');document.querySelector('#catalog .page-h
 if(profileButtons[2])profileButtons[2].onclick=showFavourites;
 if(profileButtons[3])profileButtons[3].onclick=()=>go('urgent');
 loadSubscription();loadMarketplaceStats();krugLoadProfile();
+</script>
+<script>
+// KRUG v6: complete listing details and real seller contact action.
+let krugOpenedDetail=null;
+async function openCarV3(id,n,p,pos,picture){
+  krugOpenedCar=id;openCar(n,p,pos);detailImg.src=picture;
+  let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}
+  if(!id||location.protocol==='file:')return;
+  let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');
+  let d=krugOpenedDetail=await r.json();detailName.textContent=d.name;detailPrice.textContent=rub(d.price);detailYear.textContent=d.year;detailKm.textContent=d.km;detailType.textContent=d.type;detailDescription.textContent=d.description||'Описание не указано';
+  detailSeller.textContent=d.is_owner?'Это ваше объявление':`${d.seller_name||'Продавец'} · Екатеринбург`;
+  sellerContact.textContent=d.is_owner?'Управлять объявлением':(d.seller_username?'Написать в Telegram':d.phone?'Позвонить продавцу':'Запросить контакт');
+}
+function contactSeller(){
+  let d=krugOpenedDetail;if(!d)return toast('Контакт загружается');
+  if(d.is_owner){closeModal();return showMyCars()}
+  if(d.seller_username){let url=`https://t.me/${d.seller_username.replace(/^@/,'')}`;if(window.Telegram?.WebApp?.openTelegramLink)Telegram.WebApp.openTelegramLink(url);else location.href=url;return}
+  if(d.phone){location.href=`tel:${d.phone.replace(/[^+\d]/g,'')}`;return}
+  toast('Продавец пока не указал контакт');
+}
 </script>
 </body>
 </html>
