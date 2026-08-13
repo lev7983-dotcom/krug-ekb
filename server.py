@@ -31,7 +31,8 @@ class PGConnection:
         cur=self.db.execute(sql+(" RETURNING id" if wants_id else ""),params)
         last=cur.fetchone()["id"] if wants_id else None
         return PGCursor(cur,last)
-    def executemany(self,sql,rows): return self.db.executemany(sql.replace("?","%s"),rows)
+ def executemany(self,sql,rows):
+  cur=self.db.cursor(); cur.executemany(sql.replace("?","%s"),rows); return cur
     def executescript(self,sql):
         for statement in sql.split(";"):
             if statement.strip(): self.db.execute(statement)
