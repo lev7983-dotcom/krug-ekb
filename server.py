@@ -132,7 +132,7 @@ class Handler(SimpleHTTPRequestHandler):
                 row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,u.role AS seller_role,u.company AS seller_company,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
-                    WHERE c.id=? AND c.status='active'""",(uid,int(detail.group(1)))).fetchone()
+                    WHERE c.id=? AND (c.status='active' OR c.owner_id=?)""",(uid,int(detail.group(1)),uid)).fetchone()
             if not row: return self.send_json({"error":"Объявление не найдено"},404)
             data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid
             return self.send_json(data)
@@ -234,6 +234,17 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
             m=re.fullmatch(r"/api/cars/(\d+)",path)
             if not m: return self.send_json({"error":"Маршрут не найден"},404)
+            if data.get("action")=="edit":
+                name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(data.get("km") or 0)
+                if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
+                urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
+                phone=str(data.get("phone","")).strip(); images=data.get("images") if isinstance(data.get("images"),list) else []
+                images=[str(x) for x in images[:8] if x]
+                if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
+                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False)
+                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,int(m.group(1)),uid))
+                return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
             with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=?",(status,NOW().isoformat(),int(m.group(1)),uid))
