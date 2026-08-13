@@ -28,7 +28,7 @@
 <main class="app">
   <section class="screen active" id="home">
     <header class="top"><div class="brand">КРУГ<i></i></div><button class="city">⌖ Екатеринбург</button><button class="icon-btn">⌕</button></header>
-    <div class="hero"><img src="assets/krug-hero.png" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
+    <div class="hero"><img src="krug-hero.png" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
     <div class="section"><div class="section-head"><h2>Что ищем?</h2></div><div class="modes"><button class="mode active" onclick="setMode(this,'Все')">Купить</button><button class="mode" onclick="setMode(this,'Обмен')">Обмен</button><button class="mode" onclick="go('urgent')">Срочно ⚡</button></div></div>
     <div class="section"><div class="section-head"><h2>Сейчас в городе</h2><button class="link" onclick="go('catalog')">Все объявления</button></div><div class="cards" id="homeCards"></div></div>
     <div class="section"><div class="urgent-banner" id="homeSub"><span class="pulse"></span><h2>Срочные авто</h2><p>Получайте уведомление, когда в Екатеринбурге появляется автомобиль, который хотят продать сегодня.</p><button class="btn lime" onclick="subscribe(this)">Подписаться</button></div></div>
@@ -52,7 +52,7 @@
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b>2018</b></div><div class="spec">Пробег<b>86 000 км</b></div><div class="spec">Коробка<b>Автомат</b></div></div><button class="btn lime" onclick="toast('Продавец получил ваш запрос')">Написать продавцу</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-const hero='assets/krug-hero.png';
+const hero='krug-hero.png';
 let cars=[
  {name:'Toyota RAV4',price:2890000,year:2021,km:'54 000 км',type:'Продажа',urgent:false,pos:'70% 50%'},
  {name:'Kia K5',price:2470000,year:2020,km:'72 000 км',type:'Обмен',urgent:false,pos:'18% 50%'},
