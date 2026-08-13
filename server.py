@@ -178,6 +178,12 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/subscriptions":
             with connect() as db: row=db.execute("SELECT 1 FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,)).fetchone()
             return self.send_json({"urgent":bool(row)})
+        if path=="/api/favourites":
+            with connect() as db:
+                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,1 AS faved
+                    FROM favourites f JOIN cars c ON c.id=f.car_id LEFT JOIN users u ON u.id=c.owner_id
+                    WHERE f.user_id=? AND c.status='active' ORDER BY f.created_at DESC""",(uid,)).fetchall()
+            return self.send_json([car_dict(r,True) for r in rows])
         if path=="/api/me":
             with connect() as db:
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]

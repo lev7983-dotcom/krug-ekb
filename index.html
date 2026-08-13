@@ -257,5 +257,11 @@ function openCarById(id){let c=cars.find(x=>Number(x.id)===Number(id));if(c)open
 function card(c){let name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer';return `<article class="car" onclick="openCarById(${Number(c.id)||0})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${Number(c.id)||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 renderAll();
 </script>
+<script>
+// KRUG v14: favourites are loaded from the database, not stale page memory.
+async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');let c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!d.favourite;b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');await krugLoadProfile()}
+async function showFavourites(){let r=await krugApi('/api/favourites');if(!r.ok)return toast('Не удалось загрузить избранное');let list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';document.getElementById('catalogCards').innerHTML=list.map(card).join('')||'<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}
+if(profileButtons[2])profileButtons[2].onclick=showFavourites;
+</script>
 </body>
 </html>
