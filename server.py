@@ -392,9 +392,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,int(m.group(1)),uid))
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
-            status={"archive":"archived","activate":"active"}.get(data.get("action"))
+            status={"archive":"archived","activate":"active","sold":"sold"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
-            with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=? AND (status='active' OR status='archived')",(status,NOW().isoformat(),int(m.group(1)),uid))
+            with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=? AND status IN ('active','archived','sold')",(status,NOW().isoformat(),int(m.group(1)),uid))
             return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
         except (ValueError,json.JSONDecodeError) as e: return self.send_json({"error":str(e)},400)
 

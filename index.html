@@ -421,5 +421,15 @@ async function shareOpenedCar(){
 async function openLinkedCar(){let id=Number(new URLSearchParams(location.search).get('car'));if(!id)return;try{if(location.protocol!=='file:')await krugLoadCars();let c=cars.find(x=>Number(x.id)===id);if(!c)return toast('Объявление больше недоступно');go('catalog');await openCarV3(c.id,c.name,c.price,c.pos||'50% 50%',c.image||hero)}catch(_){toast('Не удалось открыть объявление')}}
 setTimeout(openLinkedCar,700);
 </script>
+<style>
+.sold-label{margin:8px 0 12px;padding:10px 12px;border-radius:13px;background:#e8f1ff;color:#164d87;font-size:13px;font-weight:800}.sold-button{background:#17211c!important;color:#fff!important}
+</style>
+<script>
+// KRUG v25: sold status keeps seller history while removing stale listings.
+async function showMyCars(){
+  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}${c.status==='sold'?'<div class="sold-label">✓ Автомобиль продан</div>':`<div class="listing-insights"><span>👁 Просмотры: ${Number(c.views)||0}</span><span>♥ В избранном: ${Number(c.favourites_count)||0}</span></div>`}${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions">${c.status==='sold'?`<button class="btn back" onclick="manageCar(${c.id},'activate')">Вернуть в продажу</button>`:`<button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button><button class="btn sold-button" onclick="markCarSold(${c.id})">Продано</button>`}`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}}
+async function markCarSold(id){if(!confirm('Отметить автомобиль как проданный? Он исчезнет из каталога.'))return;try{await krugJson(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action:'sold'})});toast('Поздравляем с продажей!');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
+if(profileButtons[0])profileButtons[0].onclick=showMyCars;
+</script>
 </body>
 </html>
