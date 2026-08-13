@@ -65,6 +65,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS favourites(user_id TEXT NOT NULL, car_id {ref_id} NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(user_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS subscriptions(id {generic_id}, telegram_user TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'urgent', created_at TEXT NOT NULL, UNIQUE(telegram_user,kind));
         CREATE TABLE IF NOT EXISTS exchanges(id {generic_id}, from_user TEXT NOT NULL, target_car_id {ref_id} NOT NULL, offered_car_id {ref_id}, message TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, FOREIGN KEY(target_car_id) REFERENCES cars(id) ON DELETE CASCADE, FOREIGN KEY(offered_car_id) REFERENCES cars(id) ON DELETE SET NULL);
+        CREATE TABLE IF NOT EXISTS reports(id {generic_id}, reporter_id TEXT NOT NULL, car_id {ref_id} NOT NULL, reason TEXT NOT NULL, details TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, UNIQUE(reporter_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -149,7 +150,8 @@ class Handler(SimpleHTTPRequestHandler):
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
             return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions})
         if path=="/api/my-cars":
-            with connect() as db: rows=db.execute("SELECT * FROM cars WHERE owner_id=? AND status<>'deleted' ORDER BY id DESC",(uid,)).fetchall()
+            with connect() as db: rows=db.execute("""SELECT c.*, (SELECT COUNT(*) FROM reports r WHERE r.car_id=c.id) AS report_count
+                FROM cars c WHERE c.owner_id=? AND c.status<>'deleted' ORDER BY c.id DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r) for r in rows])
         if path=="/api/exchanges":
             with connect() as db:
@@ -193,6 +195,21 @@ class Handler(SimpleHTTPRequestHandler):
             if path=="/api/subscriptions":
                 with connect() as db: db.execute("INSERT OR IGNORE INTO subscriptions(telegram_user,kind,created_at) VALUES(?,?,?)",(uid,"urgent",now))
                 return self.send_json({"ok":True})
+            report=re.fullmatch(r"/api/cars/(\d+)/report",path)
+            if report:
+                cid=int(report.group(1)); reason=str(data.get("reason") or "other")[:40]; details=str(data.get("details") or "").strip()[:500]
+                allowed={"fraud","wrong_info","sold","duplicate","other"}
+                if reason not in allowed: return self.send_json({"error":"Выберите причину жалобы"},400)
+                with connect() as db:
+                    car=db.execute("SELECT owner_id,status FROM cars WHERE id=?",(cid,)).fetchone()
+                    if not car or (car["status"] if DATABASE_URL else car[1])!="active": return self.send_json({"error":"Объявление недоступно"},404)
+                    if (car["owner_id"] if DATABASE_URL else car[0])==uid: return self.send_json({"error":"Нельзя пожаловаться на своё объявление"},400)
+                    try: db.execute("INSERT INTO reports(reporter_id,car_id,reason,details,created_at) VALUES(?,?,?,?,?)",(uid,cid,reason,details,now))
+                    except Exception:
+                        return self.send_json({"error":"Вы уже отправляли жалобу"},409)
+                    count=db.execute("SELECT COUNT(*) AS count FROM reports WHERE car_id=? AND status='new'",(cid,)).fetchone(); total=count["count"] if DATABASE_URL else count[0]
+                    if total>=3: db.execute("UPDATE cars SET status='review',updated_at=? WHERE id=? AND status='active'",(now,cid))
+                return self.send_json({"ok":True,"under_review":total>=3},201)
             if path=="/api/exchanges":
                 target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None
                 with connect() as db:
@@ -247,7 +264,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
-            with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=?",(status,NOW().isoformat(),int(m.group(1)),uid))
+            with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=? AND (status='active' OR status='archived')",(status,NOW().isoformat(),int(m.group(1)),uid))
             return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
         except (ValueError,json.JSONDecodeError) as e: return self.send_json({"error":str(e)},400)
 
