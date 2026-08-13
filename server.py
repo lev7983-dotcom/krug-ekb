@@ -118,6 +118,16 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:
                 rows=db.execute("SELECT c.*, EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved FROM cars c WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC",(uid,)).fetchall()
             return self.send_json([car_dict(r,r["faved"]) for r in rows])
+        detail=re.fullmatch(r"/api/cars/(\d+)",path)
+        if detail:
+            with connect() as db:
+                row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,
+                    EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
+                    FROM cars c LEFT JOIN users u ON u.id=c.owner_id
+                    WHERE c.id=? AND c.status='active'""",(uid,int(detail.group(1)))).fetchone()
+            if not row: return self.send_json({"error":"Объявление не найдено"},404)
+            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid
+            return self.send_json(data)
         if path=="/api/stats":
             with connect() as db:
                 ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)",(NOW().isoformat(),)).fetchone()
