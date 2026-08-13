@@ -297,6 +297,9 @@ class Handler(SimpleHTTPRequestHandler):
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 phone=str(data.get("phone","")).strip()
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                with connect() as db: contact_user=db.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
+                contact_username=(str(tg_user.get("username") or "") if tg_user else "") or (str(contact_user["username"] if DATABASE_URL else contact_user[0]) if contact_user else "")
+                if not phone and not contact_username: return self.send_json({"error":"Укажите телефон: в вашем Telegram нет публичного username"},400)
                 images=data.get("images") if isinstance(data.get("images"),list) else ([data.get("image")] if data.get("image") else [])
                 images=[str(x) for x in images[:8] if x]
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
@@ -407,6 +410,9 @@ class Handler(SimpleHTTPRequestHandler):
                 phone=str(data.get("phone","")).strip(); images=data.get("images") if isinstance(data.get("images"),list) else []
                 images=[str(x) for x in images[:8] if x]
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                with connect() as db: contact_user=db.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
+                contact_username=str(contact_user["username"] if DATABASE_URL else contact_user[0]) if contact_user else ""
+                if not phone and not contact_username: return self.send_json({"error":"Укажите телефон: в вашем Telegram нет публичного username"},400)
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
                 image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or ""); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
                 if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)

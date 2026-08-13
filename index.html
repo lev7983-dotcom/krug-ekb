@@ -466,5 +466,16 @@ async function saveV2(e,b,id){e?.stopPropagation?.();await toggleKrugFavourite(i
 const krugDetailFavourite=document.createElement('button');krugDetailFavourite.className='btn detail-favourite';krugDetailFavourite.onclick=()=>toggleKrugFavourite(krugOpenedDetail?.id,krugDetailFavourite);document.querySelector('.sheet').insertBefore(krugDetailFavourite,krugShareButton);
 const krugOpenBeforeFavourite=openCarV3;openCarV3=async function(...args){await krugOpenBeforeFavourite(...args);let d=krugOpenedDetail;if(!d)return;krugDetailFavourite.dataset.favouriteId=String(d.id);paintFavourite(d.id,!!d.favourite)};
 </script>
+<style>
+.contact-hint{margin:8px 2px 0;color:#69706b;font-size:12px;line-height:1.4}.contact-hint.ok{color:#17653a}
+</style>
+<script>
+// KRUG v29: every published listing must have a usable seller contact.
+const krugContactHint=document.createElement('div');krugContactHint.className='contact-hint';carPhone.closest('.field').append(krugContactHint);
+function paintContactHint(){let username=krugTgUser?.username||'',hasPhone=carPhone.value.replace(/\D/g,'').length>=10;if(username){krugContactHint.className='contact-hint ok';krugContactHint.textContent=`Покупатели смогут написать вам в Telegram: @${username}`}else if(hasPhone){krugContactHint.className='contact-hint ok';krugContactHint.textContent='Телефон будет доступен покупателям в карточке автомобиля'}else{krugContactHint.className='contact-hint';krugContactHint.textContent='Укажите телефон — в вашем Telegram нет публичного username'}}
+carPhone.addEventListener('input',paintContactHint);paintContactHint();
+const krugListingDataBeforeContact=krugListingData;krugListingData=function(){let data=krugListingDataBeforeContact();if(!data.phone&&!krugTgUser?.username)throw new Error('Укажите телефон для связи с покупателем');return data};
+const krugOpenBeforeContact=openCarV3;openCarV3=async function(...args){await krugOpenBeforeContact(...args);let d=krugOpenedDetail;if(!d)return;sellerContact.hidden=!d.is_owner&&!d.seller_username&&!d.phone;if(sellerContact.hidden)toast('У продавца пока нет доступного контакта')};
+</script>
 </body>
 </html>
