@@ -298,5 +298,31 @@ async function subscribe(b){
 }
 if(profileButtons[2])profileButtons[2].onclick=showFavourites;
 </script>
+<script>
+// KRUG v17: reliable listing creation, editing and owner controls.
+function krugListingData(){
+  let active=document.querySelector('.type-card.active')?.textContent||'',year=Number(carYear.value),price=Number(carPrice.value),km=Number(carKm.value||0),phone=carPhone.value.trim();
+  if(carName.value.trim().length<2)throw new Error('Укажите марку и модель автомобиля');
+  if(!Number.isInteger(year)||year<1950||year>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');
+  if(!Number.isFinite(price)||price<1000)throw new Error('Укажите корректную цену');
+  if(!Number.isFinite(km)||km<0)throw new Error('Проверьте пробег');
+  if(phone&&phone.replace(/\D/g,'').length<10)throw new Error('Проверьте номер телефона');
+  return {action:krugEditingId?'edit':undefined,name:carName.value.trim(),year,price,km,description:carDescription.value.trim(),phone,type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData};
+}
+function krugResetListingForm(){document.querySelectorAll('#create input:not([type=file]),#create textarea').forEach(x=>x.value='');carImage.value='';krugImageData='';krugImagesData=[];krugEditingId=0;photoPreviews.innerHTML='';carPreview.hidden=true;document.querySelector('#create .page-head h1').textContent='Разместить авто';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Опубликовать бесплатно';nextStep(1)}
+async function publish(){
+  let button=document.querySelector('#create .step[data-step="3"] .btn.lime');if(button.classList.contains('busy'))return;let data;
+  try{data=krugListingData()}catch(error){toast(error.message);return}
+  if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let editing=krugEditingId,original=button.textContent;button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
+  try{await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data)});toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();await krugLoadCars();setTimeout(()=>editing?showMyCars():go('catalog'),450)}
+  catch(error){toast(error.message)}finally{button.classList.remove('busy');if(krugEditingId)button.textContent=original}
+}
+async function showMyCars(){
+  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button>`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}}
+async function manageCar(id,action){try{await krugJson(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='archive'?'Объявление снято':'Объявление опубликовано');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
+async function deleteCar(id){if(!confirm('Удалить объявление без возможности восстановления?'))return;try{await krugJson(`/api/cars/${id}`,{method:'DELETE'});toast('Объявление удалено');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
+async function editCar(id){try{let d=await krugJson(`/api/cars/${id}`);krugEditingId=id;carName.value=d.name;carYear.value=d.year;carPrice.value=d.price;carKm.value=String(d.km).replace(/\D/g,'');carDescription.value=d.description||'';carPhone.value=d.phone||'';krugImagesData=d.images||[];krugImageData=krugImagesData[0]||'';photoPreviews.innerHTML=krugImagesData.map((src,i)=>`<img src="${src}" alt="Фото ${i+1}">`).join('');document.querySelectorAll('.type-card').forEach(x=>x.classList.toggle('active',d.urgent?x.textContent.toLowerCase().includes('срочно'):d.type==='Обмен'?x.textContent.includes('Обмен'):x.textContent==='Продать'));document.querySelector('#create .page-head h1').textContent='Изменить объявление';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Сохранить изменения';go('create');nextStep(1)}catch(error){toast(error.message)}}
+if(profileButtons[0])profileButtons[0].onclick=showMyCars;
+</script>
 </body>
 </html>
