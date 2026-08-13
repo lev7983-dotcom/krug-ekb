@@ -54,7 +54,7 @@
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta" id="detailSeller">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b id="detailYear">—</b></div><div class="spec">Пробег<b id="detailKm">—</b></div><div class="spec">Сделка<b id="detailType">—</b></div></div><div class="panel" id="detailDescription" style="margin:0 0 14px;padding:14px;line-height:1.5">Описание не указано</div><button class="btn lime" id="sellerContact" onclick="contactSeller()">Связаться с продавцом</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-const hero='krug-hero.png';
+const hero='assets/krug-hero.png';
 let cars=[
  {name:'Toyota RAV4',price:2890000,year:2021,km:'54 000 км',type:'Продажа',urgent:false,pos:'70% 50%'},
  {name:'Kia K5',price:2470000,year:2020,km:'72 000 км',type:'Обмен',urgent:false,pos:'18% 50%'},
@@ -90,7 +90,8 @@ window.Telegram?.WebApp?.ready();window.Telegram?.WebApp?.expand();
 const krugTgUser=window.Telegram?.WebApp?.initDataUnsafe?.user;
 const krugUserId=String(krugTgUser?.id||localStorage.getItem('krug_user')||'local-user');
 localStorage.setItem('krug_user',krugUserId);
-const krugApi=(url,options={})=>fetch(url,{...options,headers:{'Content-Type':'application/json','X-Krug-User':krugUserId,...options.headers}});
+const krugInitData=window.Telegram?.WebApp?.initData||'';
+const krugApi=(url,options={})=>fetch(url,{...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}});
 function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 async function krugLoadCars(){if(location.protocol==='file:')return;try{let r=await krugApi('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll();await krugLoadProfile()}catch(e){toast('Не удалось обновить объявления')}}
 async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');krugLoadProfile()}

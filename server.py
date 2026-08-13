@@ -1,10 +1,10 @@
 """KRUG marketplace API: users, listings, favourites, subscriptions and exchanges."""
-import hashlib, json, os, re, sqlite3, threading, time
+import hashlib, hmac, json, os, re, sqlite3, threading, time
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlparse
 from urllib.request import Request, urlopen
 
 ROOT=Path(__file__).resolve().parent
@@ -90,6 +90,27 @@ def init_db():
             now=NOW().isoformat(); urgent=(NOW()+timedelta(hours=24)).isoformat()
             db.executemany("INSERT INTO cars(name,price,year,km,type,urgent,pos,created_at,updated_at,urgent_until) VALUES(?,?,?,?,?,?,?,?,?,?)",[(*x,now,now,urgent if x[5] else None) for x in seed])
 
+def validate_telegram_init_data(raw,max_age=86400):
+    """Return the verified Telegram user, or None when initData is invalid/expired."""
+    if not BOT_TOKEN or not raw: return None
+    try:
+        fields=dict(parse_qsl(raw,keep_blank_values=True)); received=fields.pop("hash","")
+        if not received: return None
+        check="\n".join(f"{key}={fields[key]}" for key in sorted(fields))
+        secret=hmac.new(b"WebAppData",BOT_TOKEN.encode("utf-8"),hashlib.sha256).digest()
+        calculated=hmac.new(secret,check.encode("utf-8"),hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(calculated,received): return None
+        auth_date=int(fields.get("auth_date","0"))
+        if auth_date<=0 or abs(int(time.time())-auth_date)>max_age: return None
+        user=json.loads(fields.get("user","{}"))
+        return user if isinstance(user,dict) and user.get("id") else None
+    except (ValueError,TypeError,json.JSONDecodeError): return None
+
+def auth_context(headers,data=None,query=None):
+    tg_user=validate_telegram_init_data(headers.get("X-Telegram-Init-Data", ""))
+    if tg_user: return str(tg_user["id"]),True,tg_user
+    return user_id(headers,data,query),not BOT_TOKEN,None
+
 def user_id(headers,data=None,query=None):
     value=headers.get("X-Krug-User") or (data or {}).get("user") or (query or {}).get("user",["local-user"])[0]
     return re.sub(r"[^a-zA-Z0-9_-]","",str(value))[:80] or "local-user"
@@ -150,9 +171,12 @@ class Handler(SimpleHTTPRequestHandler):
         n=int(self.headers.get("Content-Length","0"))
         if n>12_000_000: raise ValueError("Слишком большой запрос")
         return json.loads(self.rfile.read(n) or b"{}")
+    def require_auth(self,authenticated):
+        if authenticated: return True
+        self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
-        parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid=user_id(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":5,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN)})
+        parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":6,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -176,23 +200,28 @@ class Handler(SimpleHTTPRequestHandler):
                 ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone()
             return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
         if path=="/api/subscriptions":
+            if not self.require_auth(authenticated): return
             with connect() as db: row=db.execute("SELECT 1 FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,)).fetchone()
             return self.send_json({"urgent":bool(row)})
         if path=="/api/favourites":
+            if not self.require_auth(authenticated): return
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,1 AS faved
                     FROM favourites f JOIN cars c ON c.id=f.car_id LEFT JOIN users u ON u.id=c.owner_id
                     WHERE f.user_id=? AND c.status='active' ORDER BY f.created_at DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r,True) for r in rows])
         if path=="/api/me":
+            if not self.require_auth(authenticated): return
             with connect() as db:
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE user_id=?",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
             return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions})
         if path=="/api/my-cars":
+            if not self.require_auth(authenticated): return
             with connect() as db: rows=db.execute("""SELECT c.*, (SELECT COUNT(*) FROM reports r WHERE r.car_id=c.id) AS report_count
                 FROM cars c WHERE c.owner_id=? AND c.status<>'deleted' ORDER BY c.id DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r) for r in rows])
         if path=="/api/exchanges":
+            if not self.require_auth(authenticated): return
             with connect() as db:
                 rows=db.execute("""SELECT e.*, target.name AS target_name, target.owner_id AS target_owner_id,
                     offered.name AS offered_name, sender.first_name AS sender_name, sender.username AS sender_username
@@ -204,10 +233,12 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
     def do_POST(self):
         try:
-            path=urlparse(self.path).path; data=self.read_json(); uid=user_id(self.headers,data=data); now=NOW().isoformat()
+            path=urlparse(self.path).path; data=self.read_json(); now=NOW().isoformat()
             if BOT_TOKEN and path==f"/api/telegram/{WEBHOOK_SECRET}":
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
+            uid,authenticated,tg_user=auth_context(self.headers,data=data)
+            if not self.require_auth(authenticated): return
             if path=="/api/session":
                 first=str(data.get("first_name") or "Пользователь")[:80]; username=str(data.get("username") or "")[:80]
                 with connect() as db: db.execute("INSERT INTO users(id,first_name,username,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,updated_at=excluded.updated_at",(uid,first,username,now,now))
@@ -268,7 +299,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_json({"error":"Маршрут не найден"},404)
         except (ValueError,TypeError,json.JSONDecodeError,sqlite3.IntegrityError) as e: return self.send_json({"error":str(e)},400)
     def do_DELETE(self):
-        path=urlparse(self.path).path; uid=user_id(self.headers)
+        path=urlparse(self.path).path; uid,authenticated,_=auth_context(self.headers)
+        if not self.require_auth(authenticated): return
         if path=="/api/subscriptions":
             with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,))
             return self.send_json({"ok":True,"urgent":False})
@@ -279,7 +311,8 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
     def do_PUT(self):
         try:
-            path=urlparse(self.path).path; data=self.read_json(); uid=user_id(self.headers,data=data)
+            path=urlparse(self.path).path; data=self.read_json(); uid,authenticated,_=auth_context(self.headers,data=data)
+            if not self.require_auth(authenticated): return
             if path=="/api/profile":
                 role="dealer" if data.get("role")=="dealer" else "private"; company=str(data.get("company") or "").strip()[:100]
                 if role=="dealer" and len(company)<2: return self.send_json({"error":"Укажите название компании"},400)
