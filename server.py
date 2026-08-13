@@ -1,5 +1,5 @@
 """KRUG marketplace API: users, listings, favourites, subscriptions and exchanges."""
-import json, os, re, sqlite3, threading, time
+import hashlib, json, os, re, sqlite3, threading, time
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -10,8 +10,9 @@ from urllib.request import Request, urlopen
 ROOT=Path(__file__).resolve().parent
 DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
-BOT_TOKEN=os.environ.get("BOT_TOKEN","")
+BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
+WEBHOOK_SECRET=hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else ""
 NOW=lambda: datetime.now(timezone.utc)
 RATE_BUCKETS={}; RATE_LOCK=threading.Lock()
 
@@ -118,6 +119,29 @@ def notify_urgent(car_id,name,price):
             except Exception as exc: print(f"Telegram alert failed for {chat_id}: {exc}")
     except Exception as exc: print(f"Telegram alerts unavailable: {exc}")
 
+def telegram_call(method,payload):
+    raw=json.dumps(payload,ensure_ascii=False).encode("utf-8")
+    return json.load(urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",data=raw,headers={"Content-Type":"application/json"}),timeout=12))
+
+def telegram_welcome(update):
+    message=update.get("message") or {}; text=str(message.get("text") or "")
+    if not text.startswith("/start"): return
+    chat_id=(message.get("chat") or {}).get("id"); first=(message.get("from") or {}).get("first_name") or ""
+    if not chat_id: return
+    greeting=f"Добро пожаловать в КРУГ, {first}!" if first else "Добро пожаловать в КРУГ!"
+    telegram_call("sendMessage",{"chat_id":chat_id,"text":greeting+"\n\nАвтомобили Екатеринбурга: покупка, продажа, обмен и срочные объявления.","reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
+
+def setup_telegram_webhook():
+    if not BOT_TOKEN: return
+    try:
+        base=PUBLIC_URL.split("/index.html",1)[0].rstrip("/")
+        webhook=f"{base}/api/telegram/{WEBHOOK_SECRET}"
+        telegram_call("setWebhook",{"url":webhook,"allowed_updates":["message"]})
+        telegram_call("setChatMenuButton",{"menu_button":{"type":"web_app","text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}})
+        telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"}]})
+        print("Telegram webhook configured")
+    except Exception as exc: print(f"Telegram webhook unavailable: {exc}")
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**kw): super().__init__(*a,directory=str(ROOT),**kw)
     def send_json(self,data,status=200):
@@ -175,6 +199,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         try:
             path=urlparse(self.path).path; data=self.read_json(); uid=user_id(self.headers,data=data); now=NOW().isoformat()
+            if BOT_TOKEN and path==f"/api/telegram/{WEBHOOK_SECRET}":
+                threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
+                return self.send_json({"ok":True})
             if path=="/api/session":
                 first=str(data.get("first_name") or "Пользователь")[:80]; username=str(data.get("username") or "")[:80]
                 with connect() as db: db.execute("INSERT INTO users(id,first_name,username,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,updated_at=excluded.updated_at",(uid,first,username,now,now))
@@ -280,4 +307,4 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError,json.JSONDecodeError) as e: return self.send_json({"error":str(e)},400)
 
 if __name__=="__main__":
-    port=int(os.environ.get("PORT","4173")); init_db(); print(f"KRUG on {port}"); ThreadingHTTPServer(("0.0.0.0",port),Handler).serve_forever()
+    port=int(os.environ.get("PORT","4173")); init_db(); threading.Thread(target=setup_telegram_webhook,daemon=True).start(); print(f"KRUG on {port}"); ThreadingHTTPServer(("0.0.0.0",port),Handler).serve_forever()
