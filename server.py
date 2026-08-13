@@ -83,6 +83,10 @@ def init_db():
         add_column(db,"cars","updated_at","TEXT DEFAULT NULL")
         add_column(db,"cars","image","TEXT DEFAULT ''")
         add_column(db,"cars","images","TEXT DEFAULT '[]'")
+        add_column(db,"cars","transmission","TEXT DEFAULT ''")
+        add_column(db,"cars","body_type","TEXT DEFAULT ''")
+        add_column(db,"cars","drive","TEXT DEFAULT ''")
+        add_column(db,"cars","vin","TEXT DEFAULT ''")
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
@@ -268,8 +272,10 @@ class Handler(SimpleHTTPRequestHandler):
                 images=[str(x) for x in images[:8] if x]
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
                 image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False)
+                transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
+                if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin)); cid=cur.lastrowid
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
@@ -357,8 +363,9 @@ class Handler(SimpleHTTPRequestHandler):
                 images=[str(x) for x in images[:8] if x]
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
-                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False)
-                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,int(m.group(1)),uid))
+                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
+                if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
+                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,int(m.group(1)),uid))
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)

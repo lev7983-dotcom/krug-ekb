@@ -356,5 +356,14 @@ async function deleteMyAccount(){
   catch(error){toast(error.message)}
 }
 </script>
+<script>
+// KRUG v20: essential automotive specifications.
+const krugSpecsHost=document.querySelector('#create .step[data-step="2"] .panel');
+const krugSpecs=document.createElement('div');krugSpecs.innerHTML=`<div class="field"><label>Коробка передач</label><select id="carTransmission"><option value="">Выберите</option><option>Автомат</option><option>Механика</option><option>Робот</option><option>Вариатор</option></select></div><div class="field"><label>Тип кузова</label><select id="carBodyType"><option value="">Выберите</option><option>Седан</option><option>Хэтчбек</option><option>Универсал</option><option>Кроссовер</option><option>Внедорожник</option><option>Минивэн</option><option>Купе</option><option>Пикап</option></select></div><div class="field"><label>Привод</label><select id="carDrive"><option value="">Выберите</option><option>Передний</option><option>Задний</option><option>Полный</option></select></div><div class="field"><label>VIN <small>(необязательно)</small></label><input id="carVin" maxlength="17" autocomplete="off" placeholder="17 символов" style="text-transform:uppercase"></div>`;krugSpecsHost.append(krugSpecs);
+const krugListingDataBeforeSpecs=krugListingData;krugListingData=function(){let data=krugListingDataBeforeSpecs(),vin=carVin.value.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'');if(vin&&vin.length!==17)throw new Error('VIN должен содержать 17 символов');return {...data,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin}};
+carVin.addEventListener('input',()=>carVin.value=carVin.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17));
+const krugEditBeforeSpecs=editCar;editCar=async function(id){await krugEditBeforeSpecs(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||''}catch(_){}}
+const krugOpenBeforeSpecs=openCarV3;openCarV3=async function(...args){await krugOpenBeforeSpecs(...args);let d=krugOpenedDetail;if(!d)return;let specs=[d.body_type,d.transmission,d.drive,d.vin?`VIN: ${d.vin}`:''].filter(Boolean);if(specs.length)detailDescription.textContent=`${specs.join(' · ')}\n\n${d.description||'Описание не указано'}`};
+</script>
 </body>
 </html>
