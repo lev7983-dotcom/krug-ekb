@@ -71,6 +71,7 @@ def init_db():
         add_column(db,"cars","urgent_until","TEXT DEFAULT NULL")
         add_column(db,"cars","updated_at","TEXT DEFAULT NULL")
         add_column(db,"cars","image","TEXT DEFAULT ''")
+        add_column(db,"cars","images","TEXT DEFAULT '[]'")
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
@@ -88,6 +89,9 @@ def car_dict(row,faved=False):
         try:
             if datetime.fromisoformat(until)<NOW(): d["urgent"]=0; d["type"]="Продажа"
         except ValueError: pass
+    try: d["images"]=json.loads(d.get("images") or "[]")
+    except (TypeError,json.JSONDecodeError): d["images"]=[]
+    if not d["images"] and d.get("image"): d["images"]=[d["image"]]
     d["favourite"]=bool(faved); return d
 
 def notify_urgent(car_id,name,price):
@@ -110,7 +114,7 @@ class Handler(SimpleHTTPRequestHandler):
         raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
     def read_json(self):
         n=int(self.headers.get("Content-Length","0"))
-        if n>4_000_000: raise ValueError("Слишком большой запрос")
+        if n>12_000_000: raise ValueError("Слишком большой запрос")
         return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid=user_id(self.headers,query=query)
@@ -170,10 +174,12 @@ class Handler(SimpleHTTPRequestHandler):
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 phone=str(data.get("phone","")).strip()
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
-                image=str(data.get("image", ""))
-                if image and (not image.startswith("data:image/") or len(image)>3_000_000): return self.send_json({"error":"Фотография слишком большая"},400)
+                images=data.get("images") if isinstance(data.get("images"),list) else ([data.get("image")] if data.get("image") else [])
+                images=[str(x) for x in images[:8] if x]
+                if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
+                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json)); cid=cur.lastrowid
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
