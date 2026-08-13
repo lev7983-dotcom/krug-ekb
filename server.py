@@ -1,14 +1,17 @@
 """KRUG marketplace API: users, listings, favourites, subscriptions and exchanges."""
-import json, os, re, sqlite3
+import json, os, re, sqlite3, threading
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from urllib.request import Request, urlopen
 
 ROOT=Path(__file__).resolve().parent
 DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
+BOT_TOKEN=os.environ.get("BOT_TOKEN","")
+PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
 NOW=lambda: datetime.now(timezone.utc)
 
 class PGCursor:
@@ -86,6 +89,20 @@ def car_dict(row,faved=False):
         except ValueError: pass
     d["favourite"]=bool(faved); return d
 
+def notify_urgent(car_id,name,price):
+    """Send urgent-listing alerts in the background when a Telegram token is configured."""
+    if not BOT_TOKEN: return
+    try:
+        with connect() as db: rows=db.execute("SELECT telegram_user FROM subscriptions WHERE kind='urgent'").fetchall()
+        subscribers=[str(r["telegram_user"] if DATABASE_URL else r[0]) for r in rows]
+        text=f"⚡ Срочное авто в Екатеринбурге\n\n{name}\n{price:,} ₽".replace(","," ")+"\n\nОткройте КРУГ, чтобы посмотреть объявление."
+        for chat_id in subscribers:
+            if not chat_id.isdigit(): continue
+            payload=json.dumps({"chat_id":chat_id,"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}},ensure_ascii=False).encode("utf-8")
+            try: urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data=payload,headers={"Content-Type":"application/json"}),timeout=8).read()
+            except Exception as exc: print(f"Telegram alert failed for {chat_id}: {exc}")
+    except Exception as exc: print(f"Telegram alerts unavailable: {exc}")
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*a,**kw): super().__init__(*a,directory=str(ROOT),**kw)
     def send_json(self,data,status=200):
@@ -96,7 +113,7 @@ class Handler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid=user_id(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":4,"database":"postgres" if DATABASE_URL else "sqlite"})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":5,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("SELECT c.*, EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved FROM cars c WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC",(uid,)).fetchall()
@@ -141,6 +158,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if image and (not image.startswith("data:image/") or len(image)>3_000_000): return self.send_json({"error":"Фотография слишком большая"},400)
                 with connect() as db:
                     cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image)); cid=cur.lastrowid
+                if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
             if m:
