@@ -174,5 +174,25 @@ function contactSeller(){
   toast('Продавец пока не указал контакт');
 }
 </script>
+<script>
+// KRUG v7: exchange inbox with accept/reject actions and outgoing statuses.
+const exchangeStatus={new:'Новое',accepted:'Принято',rejected:'Отклонено'};
+const safeText=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function showExchanges(){
+  let r=await krugApi('/api/exchanges');if(!r.ok)return toast('Не удалось загрузить обмены');let list=await r.json();
+  go('catalog');document.querySelector('#catalog .page-head h1').textContent='Предложения обмена';
+  document.getElementById('catalogCards').innerHTML=list.map(x=>{
+    let incoming=String(x.target_owner_id)===krugUserId, actions=incoming&&x.status==='new'?`<div class="manage-actions"><button class="btn lime" onclick="answerExchange(${x.id},'accept')">Принять</button><button class="btn back" onclick="answerExchange(${x.id},'reject')">Отклонить</button></div>`:'';
+    return `<div class="panel"><div class="eyebrow"><span class="dot"></span>${incoming?'Входящее':'Исходящее'} · ${exchangeStatus[x.status]||x.status}</div><h3>${safeText(x.offered_name||'Автомобиль')} ↔ ${safeText(x.target_name)}</h3><p class="meta">${safeText(x.sender_name||'Пользователь')}</p>${x.message?`<p>${safeText(x.message)}</p>`:''}${actions}</div>`
+  }).join('')||'<div class="panel"><h3>Предложений пока нет</h3><p class="meta">Они появятся здесь после отправки или получения обмена.</p></div>';
+}
+async function answerExchange(id,action){let r=await krugApi(`/api/exchanges/${id}`,{method:'PUT',body:JSON.stringify({action})}),d=await r.json();if(!r.ok)return toast(d.error||'Не удалось обновить предложение');toast(action==='accept'?'Обмен принят':'Предложение отклонено');await showExchanges();await krugLoadProfile()}
+async function offerExchange(){
+  let r=await krugApi('/api/my-cars'),mine=(await r.json()).filter(x=>x.status==='active');if(!mine.length){closeModal();go('create');return toast('Сначала разместите свой автомобиль')}
+  let message=prompt(`Предложить ${mine[0].name} в обмен. Добавьте сообщение:`,`Готов обсудить обмен`);if(message===null)return;
+  let res=await krugApi('/api/exchanges',{method:'POST',body:JSON.stringify({target_car_id:krugOpenedCar,offered_car_id:mine[0].id,message})}),d=await res.json();toast(res.ok?'Предложение обмена отправлено':d.error||'Не удалось отправить');if(res.ok)closeModal();
+}
+if(profileButtons[1])profileButtons[1].onclick=showExchanges;
+</script>
 </body>
 </html>
