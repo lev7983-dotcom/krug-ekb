@@ -71,6 +71,7 @@ def init_db():
         add_column(db,"cars","urgent_until","TEXT DEFAULT NULL")
         add_column(db,"cars","updated_at","TEXT DEFAULT NULL")
         add_column(db,"cars","image","TEXT DEFAULT ''")
+        add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
@@ -116,12 +117,15 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":5,"database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
-                rows=db.execute("SELECT c.*, EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved FROM cars c WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC",(uid,)).fetchall()
+                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                    EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
+                    FROM cars c LEFT JOIN users u ON u.id=c.owner_id
+                    WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r,r["faved"]) for r in rows])
         detail=re.fullmatch(r"/api/cars/(\d+)",path)
         if detail:
             with connect() as db:
-                row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,
+                row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,u.role AS seller_role,u.company AS seller_company,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
                     WHERE c.id=? AND c.status='active'""",(uid,int(detail.group(1)))).fetchone()
@@ -209,6 +213,11 @@ class Handler(SimpleHTTPRequestHandler):
     def do_PUT(self):
         try:
             path=urlparse(self.path).path; data=self.read_json(); uid=user_id(self.headers,data=data)
+            if path=="/api/profile":
+                role="dealer" if data.get("role")=="dealer" else "private"; company=str(data.get("company") or "").strip()[:100]
+                if role=="dealer" and len(company)<2: return self.send_json({"error":"Укажите название компании"},400)
+                with connect() as db: cur=db.execute("UPDATE users SET role=?,company=?,updated_at=? WHERE id=?",(role,company,NOW().isoformat(),uid))
+                return self.send_json({"ok":bool(cur.rowcount),"role":role,"company":company},200 if cur.rowcount else 404)
             exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
             if exchange:
                 status={"accept":"accepted","reject":"rejected"}.get(data.get("action"))
