@@ -31,6 +31,7 @@ def init_db():
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
         add_column(db,"cars","urgent_until","TEXT DEFAULT NULL")
         add_column(db,"cars","updated_at","TEXT DEFAULT NULL")
+        add_column(db,"cars","image","TEXT DEFAULT ''")
         if not db.execute("SELECT COUNT(*) FROM cars").fetchone()[0]:
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
             now=NOW().isoformat(); urgent=(NOW()+timedelta(hours=24)).isoformat()
@@ -54,7 +55,7 @@ class Handler(SimpleHTTPRequestHandler):
         raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
     def read_json(self):
         n=int(self.headers.get("Content-Length","0"))
-        if n>1_000_000: raise ValueError("Слишком большой запрос")
+        if n>4_000_000: raise ValueError("Слишком большой запрос")
         return json.loads(self.rfile.read(n) or b"{}")
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid=user_id(self.headers,query=query)
@@ -70,6 +71,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/my-cars":
             with connect() as db: rows=db.execute("SELECT * FROM cars WHERE owner_id=? ORDER BY id DESC",(uid,)).fetchall()
             return self.send_json([car_dict(r) for r in rows])
+        if path=="/api/exchanges":
+            with connect() as db:
+                rows=db.execute("""SELECT e.*, target.name AS target_name, offered.name AS offered_name
+                    FROM exchanges e JOIN cars target ON target.id=e.target_car_id
+                    LEFT JOIN cars offered ON offered.id=e.offered_car_id
+                    WHERE e.from_user=? OR target.owner_id=? ORDER BY e.id DESC""",(uid,uid)).fetchall()
+            return self.send_json([dict(r) for r in rows])
         return super().do_GET()
     def do_POST(self):
         try:
@@ -84,8 +92,10 @@ class Handler(SimpleHTTPRequestHandler):
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 phone=str(data.get("phone","")).strip()
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                image=str(data.get("image", ""))
+                if image and (not image.startswith("data:image/") or len(image)>3_000_000): return self.send_json({"error":"Фотография слишком большая"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image)); cid=cur.lastrowid
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
             if m:
@@ -112,6 +122,15 @@ class Handler(SimpleHTTPRequestHandler):
         with connect() as db:
             cur=db.execute("UPDATE cars SET status='deleted',updated_at=? WHERE id=? AND owner_id=?",(NOW().isoformat(),int(m.group(1)),uid))
         return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
+    def do_PUT(self):
+        try:
+            m=re.fullmatch(r"/api/cars/(\d+)",urlparse(self.path).path); data=self.read_json(); uid=user_id(self.headers,data=data)
+            if not m: return self.send_json({"error":"Маршрут не найден"},404)
+            status={"archive":"archived","activate":"active"}.get(data.get("action"))
+            if not status: return self.send_json({"error":"Неизвестное действие"},400)
+            with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=?",(status,NOW().isoformat(),int(m.group(1)),uid))
+            return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
+        except (ValueError,json.JSONDecodeError) as e: return self.send_json({"error":str(e)},400)
 
 if __name__=="__main__":
     port=int(os.environ.get("PORT","4173")); init_db(); print(f"KRUG on {port}"); ThreadingHTTPServer(("0.0.0.0",port),Handler).serve_forever()
