@@ -440,5 +440,12 @@ const krugListingDataBeforeThumb=krugListingData;krugListingData=function(){retu
 const krugEditBeforeThumb=editCar;editCar=async function(id){await krugEditBeforeThumb(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);krugThumbnailData=d.thumbnail||d.image||''}catch(_){}};
 const krugResetBeforeThumb=krugResetListingForm;krugResetListingForm=function(){krugThumbnailData='';return krugResetBeforeThumb()};
 </script>
+<style>
+.old-price{display:inline-block;margin-top:5px;color:#8a918c;text-decoration:line-through;font-size:14px}.price-drop{display:inline-block;margin:6px 0 0 8px;padding:4px 8px;border-radius:9px;background:#e2f7e8;color:#17653a;font-size:12px;font-weight:800}
+</style>
+<script>
+// KRUG v27: price history and visible price drops.
+const krugOpenBeforePrice=openCarV3;openCarV3=async function(...args){await krugOpenBeforePrice(...args);let d=krugOpenedDetail;if(!d)return;let old=document.querySelector('.sheet .price-history-ui');old?.remove();if(d.previous_price&&d.previous_price>d.price){let box=document.createElement('div');box.className='price-history-ui';let drop=d.previous_price-d.price;box.innerHTML=`<span class="old-price">${rub(d.previous_price)}</span><span class="price-drop">Цена снижена на ${rub(drop)}</span>`;detailPrice.after(box)}};
+</script>
 </body>
 </html>

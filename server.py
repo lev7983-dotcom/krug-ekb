@@ -77,6 +77,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS exchanges(id {generic_id}, from_user TEXT NOT NULL, target_car_id {ref_id} NOT NULL, offered_car_id {ref_id}, message TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, FOREIGN KEY(target_car_id) REFERENCES cars(id) ON DELETE CASCADE, FOREIGN KEY(offered_car_id) REFERENCES cars(id) ON DELETE SET NULL);
         CREATE TABLE IF NOT EXISTS reports(id {generic_id}, reporter_id TEXT NOT NULL, car_id {ref_id} NOT NULL, reason TEXT NOT NULL, details TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, UNIQUE(reporter_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS car_views(viewer_id TEXT NOT NULL, car_id {ref_id} NOT NULL, view_day TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(viewer_id,car_id,view_day), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS price_history(id {generic_id}, car_id {ref_id} NOT NULL, old_price INTEGER NOT NULL, new_price INTEGER NOT NULL, changed_at TEXT NOT NULL, FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -155,6 +156,14 @@ def notify_exchange_user(chat_id,text):
     try: telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
     except Exception as exc: print(f"Exchange notification failed for {chat_id}: {exc}")
 
+def notify_price_drop(car_id,name,old_price,new_price):
+    if not BOT_TOKEN: return
+    try:
+        with connect() as db: rows=db.execute("SELECT user_id FROM favourites WHERE car_id=?",(car_id,)).fetchall()
+        drop=old_price-new_price; text=f"📉 Снижение цены в избранном\n\n{name}\nБыло: {old_price:,} ₽\nСтало: {new_price:,} ₽\nВыгода: {drop:,} ₽".replace(","," ")
+        for row in rows: notify_exchange_user(row["user_id"] if DATABASE_URL else row[0],text)
+    except Exception as exc: print(f"Price drop notifications failed: {exc}")
+
 def telegram_welcome(update):
     message=update.get("message") or {}; text=str(message.get("text") or "")
     if not text.startswith("/start"): return
@@ -216,7 +225,8 @@ class Handler(SimpleHTTPRequestHandler):
                     try: db.execute("INSERT INTO car_views(viewer_id,car_id,view_day,created_at) VALUES(?,?,?,?) ON CONFLICT(viewer_id,car_id,view_day) DO NOTHING",(uid,int(detail.group(1)),NOW().date().isoformat(),NOW().isoformat()))
                     except sqlite3.IntegrityError: pass
                 vr=db.execute("SELECT COUNT(*) AS count FROM car_views WHERE car_id=?",(int(detail.group(1)),)).fetchone(); favr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE car_id=?",(int(detail.group(1)),)).fetchone()
-            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid; data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]
+                phr=db.execute("SELECT old_price,new_price,changed_at FROM price_history WHERE car_id=? ORDER BY id DESC LIMIT 1",(int(detail.group(1)),)).fetchone()
+            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid; data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]; data["previous_price"]=int(phr["old_price"] if DATABASE_URL else phr[0]) if phr and int(phr["old_price"] if DATABASE_URL else phr[0])>data["price"] else None
             return self.send_json(data)
         if path=="/api/stats":
             with connect() as db:
@@ -396,7 +406,12 @@ class Handler(SimpleHTTPRequestHandler):
                 image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or ""); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
                 if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
-                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,int(m.group(1)),uid))
+                cid=int(m.group(1)); old_price=None
+                with connect() as db:
+                    old=db.execute("SELECT price FROM cars WHERE id=? AND owner_id=? AND status<>'deleted'",(cid,uid)).fetchone(); old_price=int(old["price"] if DATABASE_URL else old[0]) if old else None
+                    cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,cid,uid))
+                    if cur.rowcount and old_price is not None and old_price!=price: db.execute("INSERT INTO price_history(car_id,old_price,new_price,changed_at) VALUES(?,?,?,?)",(cid,old_price,price,NOW().isoformat()))
+                if cur.rowcount and old_price is not None and price<old_price: threading.Thread(target=notify_price_drop,args=(cid,name[:80],old_price,price),daemon=True).start()
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active","sold":"sold"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
