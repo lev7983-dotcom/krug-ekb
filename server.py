@@ -235,6 +235,15 @@ class Handler(SimpleHTTPRequestHandler):
                     LEFT JOIN users sender ON sender.id=e.from_user
                     WHERE e.from_user=? OR target.owner_id=? ORDER BY e.id DESC""",(uid,uid)).fetchall()
             return self.send_json([dict(r) for r in rows])
+        if path=="/api/export":
+            if not self.require_auth(authenticated): return
+            with connect() as db:
+                user=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+                cars_rows=db.execute("SELECT * FROM cars WHERE owner_id=? AND status<>'deleted' ORDER BY id",(uid,)).fetchall()
+                favourites=db.execute("SELECT car_id,created_at FROM favourites WHERE user_id=? ORDER BY created_at",(uid,)).fetchall()
+                subscriptions=db.execute("SELECT kind,created_at FROM subscriptions WHERE telegram_user=? ORDER BY created_at",(uid,)).fetchall()
+                exchanges=db.execute("SELECT * FROM exchanges WHERE from_user=? OR EXISTS(SELECT 1 FROM cars WHERE cars.id=exchanges.target_car_id AND cars.owner_id=?) ORDER BY id",(uid,uid)).fetchall()
+            return self.send_json({"exported_at":NOW().isoformat(),"user":dict(user) if user else None,"cars":[car_dict(r) for r in cars_rows],"favourites":[dict(r) for r in favourites],"subscriptions":[dict(r) for r in subscriptions],"exchanges":[dict(r) for r in exchanges]})
         return super().do_GET()
     def do_POST(self):
         try:
@@ -306,6 +315,13 @@ class Handler(SimpleHTTPRequestHandler):
     def do_DELETE(self):
         path=urlparse(self.path).path; uid,authenticated,_=auth_context(self.headers)
         if not self.require_auth(authenticated): return
+        if path=="/api/account":
+            with connect() as db:
+                owned=db.execute("SELECT id FROM cars WHERE owner_id=?",(uid,)).fetchall(); car_ids=[int(r["id"] if DATABASE_URL else r[0]) for r in owned]
+                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,))
+                for cid in car_ids: db.execute("DELETE FROM cars WHERE id=?",(cid,))
+                db.execute("DELETE FROM users WHERE id=?",(uid,))
+            return self.send_json({"ok":True,"deleted":True})
         if path=="/api/subscriptions":
             with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,))
             return self.send_json({"ok":True,"urgent":False})

@@ -341,5 +341,20 @@ const krugConsent=document.createElement('label');krugConsent.className='legal-c
 legalAccepted.checked=localStorage.getItem('krug_legal_accepted')==='1';legalAccepted.addEventListener('change',()=>localStorage.setItem('krug_legal_accepted',legalAccepted.checked?'1':'0'));
 const krugListingDataBeforeLegal=krugListingData;krugListingData=function(){if(!legalAccepted.checked)throw new Error('Подтвердите правила и политику конфиденциальности');return krugListingDataBeforeLegal()};
 </script>
+<script>
+// KRUG v19: personal data export and protected account deletion.
+const krugProfileMenu=document.querySelector('#profile .menu-list');
+const krugDataButton=document.createElement('button');krugDataButton.className='menu-item';krugDataButton.innerHTML='Скачать мои данные <span>›</span>';krugDataButton.onclick=exportMyData;krugProfileMenu.append(krugDataButton);
+const krugDeleteButton=document.createElement('button');krugDeleteButton.className='menu-item';krugDeleteButton.style.color='#b42318';krugDeleteButton.innerHTML='Удалить аккаунт <span>›</span>';krugDeleteButton.onclick=deleteMyAccount;krugProfileMenu.append(krugDeleteButton);
+async function exportMyData(){
+  try{let data=await krugJson('/api/export'),blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`krug-data-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Копия данных подготовлена')}
+  catch(error){toast(error.message)}
+}
+async function deleteMyAccount(){
+  let answer=prompt('Будут удалены аккаунт, объявления, избранное, подписки и предложения обмена. Для подтверждения напишите УДАЛИТЬ','');if(answer!=='УДАЛИТЬ')return answer===null?undefined:toast('Удаление отменено');
+  try{await krugJson('/api/account',{method:'DELETE'});localStorage.removeItem('krug_user');localStorage.removeItem('krug_legal_accepted');cars=[];renderAll();go('home');toast('Ваш аккаунт и данные удалены')}
+  catch(error){toast(error.message)}
+}
+</script>
 </body>
 </html>
