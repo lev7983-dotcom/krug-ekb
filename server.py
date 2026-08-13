@@ -312,9 +312,14 @@ class Handler(SimpleHTTPRequestHandler):
             if m:
                 cid=int(m.group(1))
                 with connect() as db:
+                    car=db.execute("SELECT status FROM cars WHERE id=?",(cid,)).fetchone()
+                    if not car: return self.send_json({"error":"Объявление не найдено"},404)
                     exists=db.execute("SELECT 1 FROM favourites WHERE user_id=? AND car_id=?",(uid,cid)).fetchone()
                     if exists: db.execute("DELETE FROM favourites WHERE user_id=? AND car_id=?",(uid,cid)); state=False
-                    else: db.execute("INSERT INTO favourites(user_id,car_id,created_at) VALUES(?,?,?)",(uid,cid,now)); state=True
+                    else:
+                        status=car["status"] if DATABASE_URL else car[0]
+                        if status!="active": return self.send_json({"error":"Объявление больше не активно"},409)
+                        db.execute("INSERT INTO favourites(user_id,car_id,created_at) VALUES(?,?,?)",(uid,cid,now)); state=True
                 return self.send_json({"ok":True,"favourite":state})
             if path=="/api/subscriptions":
                 with connect() as db: db.execute("INSERT OR IGNORE INTO subscriptions(telegram_user,kind,created_at) VALUES(?,?,?)",(uid,"urgent",now))

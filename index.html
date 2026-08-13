@@ -447,5 +447,24 @@ const krugResetBeforeThumb=krugResetListingForm;krugResetListingForm=function(){
 // KRUG v27: price history and visible price drops.
 const krugOpenBeforePrice=openCarV3;openCarV3=async function(...args){await krugOpenBeforePrice(...args);let d=krugOpenedDetail;if(!d)return;let old=document.querySelector('.sheet .price-history-ui');old?.remove();if(d.previous_price&&d.previous_price>d.price){let box=document.createElement('div');box.className='price-history-ui';let drop=d.previous_price-d.price;box.innerHTML=`<span class="old-price">${rub(d.previous_price)}</span><span class="price-drop">Цена снижена на ${rub(drop)}</span>`;detailPrice.after(box)}};
 </script>
+<style>
+.detail-favourite{width:100%;margin-top:10px;border:1px solid #d8ded9;background:#fff;color:#17211c}.detail-favourite.saved{border-color:#ff6b57;background:#fff0ed;color:#a72d1f}.detail-favourite.busy{opacity:.55;pointer-events:none}
+</style>
+<script>
+// KRUG v28: consistent favourites in catalogue, saved list and car details.
+function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite;return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
+function paintFavourite(id,state){
+  let c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!state;
+  document.querySelectorAll(`[data-favourite-id="${Number(id)}"]`).forEach(b=>{b.classList.toggle('saved',!!state);b.textContent=state?(b.classList.contains('heart')?'♥':'♥ В избранном'):(b.classList.contains('heart')?'♡':'♡ Добавить в избранное');b.setAttribute('aria-label',state?'Удалить из избранного':'Добавить в избранное')});
+}
+async function toggleKrugFavourite(id,button){
+  if(!id||button?.classList.contains('busy'))return;button?.classList.add('busy');
+  try{let d=await krugJson(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'});paintFavourite(id,d.favourite);toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');if(!d.favourite&&document.querySelector('#catalog .page-head h1')?.textContent==='Избранное'){document.querySelector(`#catalogCards .car[data-car-id="${Number(id)}"]`)?.remove();if(!document.querySelector('#catalogCards .car'))document.getElementById('catalogCards').innerHTML='<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}await krugLoadProfile();return d}
+  catch(error){toast(error.message)}finally{button?.classList.remove('busy')}
+}
+async function saveV2(e,b,id){e?.stopPropagation?.();await toggleKrugFavourite(id,b)}
+const krugDetailFavourite=document.createElement('button');krugDetailFavourite.className='btn detail-favourite';krugDetailFavourite.onclick=()=>toggleKrugFavourite(krugOpenedDetail?.id,krugDetailFavourite);document.querySelector('.sheet').insertBefore(krugDetailFavourite,krugShareButton);
+const krugOpenBeforeFavourite=openCarV3;openCarV3=async function(...args){await krugOpenBeforeFavourite(...args);let d=krugOpenedDetail;if(!d)return;krugDetailFavourite.dataset.favouriteId=String(d.id);paintFavourite(d.id,!!d.favourite)};
+</script>
 </body>
 </html>
