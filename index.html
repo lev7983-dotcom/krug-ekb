@@ -383,5 +383,20 @@ function applyCatalog(){
 krugFilterBox.querySelector('.filter-reset').onclick=()=>{catalogSearch.value='';catalogRange='all';document.querySelectorAll('#prices .chip').forEach(x=>x.classList.toggle('active',x.dataset.range==='all'));filterTransmission.value='';filterBody.value='';filterDrive.value='';catalogSort.value='new';applyCatalog()};
 applyCatalog();
 </script>
+<style>
+.draft-note{display:none;margin:0 0 12px;padding:12px 14px;border-radius:15px;background:#e9f8ef;color:#155b36;font-size:13px}.draft-note.show{display:flex;align-items:center;justify-content:space-between;gap:10px}.draft-note button{border:0;background:none;color:#a22;font-weight:700}
+</style>
+<script>
+// KRUG v22: automatic listing drafts survive accidental closes and reconnects.
+const KRUG_DRAFT_KEY='krug_listing_draft_v1';
+const krugDraftNote=document.createElement('div');krugDraftNote.className='draft-note';krugDraftNote.innerHTML='<span>Черновик автоматически сохраняется</span><button type="button">Очистить</button>';document.querySelector('#create .page-head').after(krugDraftNote);
+function krugDraftSnapshot(){return {name:carName.value,year:carYear.value,price:carPrice.value,km:carKm.value,description:carDescription.value,phone:carPhone.value,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin:carVin.value,type:[...document.querySelectorAll('.type-card')].findIndex(x=>x.classList.contains('active')),saved_at:new Date().toISOString()}}
+function saveKrugDraft(){if(krugEditingId)return;let draft=krugDraftSnapshot(),hasData=Object.entries(draft).some(([k,v])=>!['saved_at','type'].includes(k)&&String(v).trim());if(hasData){localStorage.setItem(KRUG_DRAFT_KEY,JSON.stringify(draft));krugDraftNote.classList.add('show')}else{localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show')}}
+function restoreKrugDraft(){try{let d=JSON.parse(localStorage.getItem(KRUG_DRAFT_KEY)||'null');if(!d)return;carName.value=d.name||'';carYear.value=d.year||'';carPrice.value=d.price||'';carKm.value=d.km||'';carDescription.value=d.description||'';carPhone.value=d.phone||'';carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||'';let types=document.querySelectorAll('.type-card');types.forEach((x,i)=>x.classList.toggle('active',i===Number(d.type||0)));krugDraftNote.classList.add('show');toast('Черновик объявления восстановлен')}catch(_){localStorage.removeItem(KRUG_DRAFT_KEY)}}
+document.querySelectorAll('#create input:not([type=file]),#create textarea,#create select').forEach(x=>{x.addEventListener('input',saveKrugDraft);x.addEventListener('change',saveKrugDraft)});document.querySelectorAll('.type-card').forEach(x=>x.addEventListener('click',()=>setTimeout(saveKrugDraft)));
+krugDraftNote.querySelector('button').onclick=()=>{localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show');document.querySelectorAll('#create input:not([type=file]),#create textarea').forEach(x=>x.value='');[carTransmission,carBodyType,carDrive].forEach(x=>x.value='');toast('Черновик очищен')};
+const krugResetBeforeDraft=krugResetListingForm;krugResetListingForm=function(){localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show');return krugResetBeforeDraft()};
+restoreKrugDraft();
+</script>
 </body>
 </html>
