@@ -113,5 +113,46 @@ async function offerExchange(){let r=await krugApi('/api/my-cars'),mine=(await r
 let profileButtons=document.querySelectorAll('#profile .menu-item');if(profileButtons[0])profileButtons[0].onclick=showMyCars;if(profileButtons[1])profileButtons[1].onclick=async()=>{let r=await krugApi('/api/exchanges'),x=await r.json();toast(x.length?`Предложений обмена: ${x.length}`:'Предложений пока нет')};
 renderAll();
 </script>
+<script>
+// KRUG v4: real counters, persistent subscription controls and complete profile shortcuts.
+let krugSubscribed=false;
+function paintSubscription(){
+  document.querySelectorAll('[onclick="subscribe(this)"]').forEach(b=>{
+    b.textContent=krugSubscribed?'✓ Вы подписаны':'🔔 Подписаться';
+    b.classList.toggle('subscribed',krugSubscribed);
+  });
+  document.getElementById('homeSub')?.classList.toggle('subscribed',krugSubscribed);
+}
+async function loadSubscription(){
+  if(location.protocol==='file:')return;
+  let r=await krugApi('/api/subscriptions');
+  if(r.ok){krugSubscribed=!!(await r.json()).urgent;paintSubscription()}
+}
+async function subscribe(){
+  if(location.protocol==='file:')return toast('Подписка работает внутри Telegram');
+  let r=await krugApi('/api/subscriptions',{method:krugSubscribed?'DELETE':'POST',body:krugSubscribed?undefined:'{}'});
+  if(!r.ok)return toast('Не удалось изменить подписку');
+  krugSubscribed=!krugSubscribed;paintSubscription();await krugLoadProfile();
+  toast(krugSubscribed?'Уведомления о срочных авто включены':'Уведомления отключены');
+}
+async function loadMarketplaceStats(){
+  if(location.protocol==='file:')return;
+  let r=await krugApi('/api/stats');if(!r.ok)return;let d=await r.json();
+  let eyebrow=document.querySelector('#catalog .eyebrow');if(eyebrow)eyebrow.innerHTML=`<span class="dot"></span> ${d.active} объявлений`;
+  let urgentCount=document.querySelector('#urgent .count b');if(urgentCount)urgentCount.textContent=d.urgent;
+}
+async function krugLoadProfile(){
+  let u=krugTgUser||{first_name:'Пользователь',username:''};
+  await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});
+  let r=await krugApi('/api/me');if(!r.ok)return;let d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;
+  p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');
+  let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.subscriptions;
+  if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${d.offers} ›</span>`;
+}
+function showFavourites(){go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';render(cars.filter(c=>c.favourite),'catalogCards')}
+if(profileButtons[2])profileButtons[2].onclick=showFavourites;
+if(profileButtons[3])profileButtons[3].onclick=()=>go('urgent');
+loadSubscription();loadMarketplaceStats();krugLoadProfile();
+</script>
 </body>
 </html>
