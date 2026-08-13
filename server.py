@@ -88,6 +88,7 @@ def init_db():
         add_column(db,"cars","body_type","TEXT DEFAULT ''")
         add_column(db,"cars","drive","TEXT DEFAULT ''")
         add_column(db,"cars","vin","TEXT DEFAULT ''")
+        add_column(db,"cars","thumbnail","TEXT DEFAULT ''")
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
@@ -198,7 +199,10 @@ class Handler(SimpleHTTPRequestHandler):
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
                     WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC""",(uid,)).fetchall()
-            return self.send_json([car_dict(r,r["faved"]) for r in rows])
+            summaries=[]
+            for row in rows:
+                item=car_dict(row,row["faved"]); item["image"]=item.get("thumbnail") or item.get("image") or ""; item.pop("images",None); item.pop("thumbnail",None); summaries.append(item)
+            return self.send_json(summaries)
         detail=re.fullmatch(r"/api/cars/(\d+)",path)
         if detail:
             with connect() as db:
@@ -286,11 +290,12 @@ class Handler(SimpleHTTPRequestHandler):
                 images=data.get("images") if isinstance(data.get("images"),list) else ([data.get("image")] if data.get("image") else [])
                 images=[str(x) for x in images[:8] if x]
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
-                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False)
+                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or "")
+                if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)
                 transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin,thumbnail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin,thumbnail)); cid=cur.lastrowid
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
@@ -388,9 +393,10 @@ class Handler(SimpleHTTPRequestHandler):
                 images=[str(x) for x in images[:8] if x]
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
                 if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
-                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
+                image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or ""); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
+                if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
-                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,int(m.group(1)),uid))
+                with connect() as db: cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,int(m.group(1)),uid))
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active","sold":"sold"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
