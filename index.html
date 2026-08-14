@@ -54,7 +54,7 @@
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta" id="detailSeller">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b id="detailYear">—</b></div><div class="spec">Пробег<b id="detailKm">—</b></div><div class="spec">Сделка<b id="detailType">—</b></div></div><div class="panel" id="detailDescription" style="margin:0 0 14px;padding:14px;line-height:1.5">Описание не указано</div><button class="btn lime" id="sellerContact" onclick="contactSeller()">Связаться с продавцом</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script>
-const hero='assets/krug-hero.png';
+const hero='/krug-hero.png';
 let cars=[
  {name:'Toyota RAV4',price:2890000,year:2021,km:'54 000 км',type:'Продажа',urgent:false,pos:'70% 50%'},
  {name:'Kia K5',price:2470000,year:2020,km:'72 000 км',type:'Обмен',urgent:false,pos:'18% 50%'},
@@ -553,6 +553,29 @@ async function showModeration(){
 async function moderateReport(id,action){try{await krugJson(`/api/admin/reports/${id}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='approve'?'Объявление возвращено':'Объявление заблокировано');await showModeration()}catch(error){toast(error.message)}}
 krugAdminButton.onclick=showModeration;
 const krugLoadProfileBeforeAdmin=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeAdmin();try{let d=await krugJson('/api/me');krugAdminButton.classList.toggle('show',!!d.admin)}catch(_){krugAdminButton.classList.remove('show')}};
+krugLoadProfile();
+</script>
+<style>
+/* KRUG v36: premium mobile polish, clear text entry and compact urgent hero. */
+#create input,#create textarea,#create select{background:#fff!important;color:#171a16!important;caret-color:#ff6848!important;border:1px solid #d8ddd5!important;-webkit-text-fill-color:#171a16!important;opacity:1!important}
+#create input:focus,#create textarea:focus,#create select:focus{outline:0!important;border-color:#9ebc34!important;box-shadow:0 0 0 4px rgba(180,218,56,.18)!important}
+#create input::placeholder,#create textarea::placeholder{color:#8b9189!important;-webkit-text-fill-color:#8b9189!important}
+.urgent-cover{position:relative;min-height:210px;margin:0 16px 14px;padding:17px 18px;border-radius:22px;overflow:hidden;background:linear-gradient(90deg,rgba(11,17,22,.96) 0%,rgba(11,17,22,.86) 43%,rgba(11,17,22,.18) 100%),url('/krug-urgent-v2.png') 65% center/cover no-repeat;box-shadow:0 16px 38px rgba(13,20,27,.2)}
+.urgent-cover h1{max-width:64%;margin:5px 0 7px;font-size:23px;line-height:1.05}.urgent-cover p{max-width:62%;margin:0 0 10px;font-size:11px;line-height:1.35;color:#d8ddd9}.urgent-cover .urgency-count{gap:5px}.urgent-cover .count{padding:6px 8px;border-radius:9px;font-size:9px;backdrop-filter:blur(8px)}.urgent-cover .count b{font-size:14px}.urgent-cover .btn{width:auto!important;margin-top:10px!important;padding:10px 14px;font-size:11px}
+.team-form{display:grid;gap:10px}.team-form input,.team-form select{width:100%;box-sizing:border-box;padding:13px;border:1px solid #d8ddd5;border-radius:13px;background:#fff;color:#171a16}.staff-role{display:inline-block;margin-top:9px;padding:5px 8px;border-radius:8px;background:#edf5d2;color:#425712;font-size:11px;font-weight:800}
+@media(max-width:390px){.urgent-cover{min-height:190px;padding:15px}.urgent-cover h1{font-size:20px}.urgent-cover p{max-width:67%}}
+</style>
+<script>
+// KRUG v36: administrators can manage staff; moderators only review reports.
+document.addEventListener('error',event=>{let image=event.target;if(image?.tagName==='IMG'&&!image.dataset.fallback){image.dataset.fallback='1';image.src='/krug-hero.png'}},true);
+const krugStaffButton=document.createElement('button');krugStaffButton.className='menu-item admin-menu';krugStaffButton.innerHTML='Администраторы и модераторы <span>›</span>';document.querySelector('#profile .menu-list').append(krugStaffButton);
+async function showStaff(){
+  try{let staff=await krugJson('/api/admin/staff');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Команда КРУГ';document.getElementById('catalogCards').innerHTML=`<div class="panel"><h3>Добавить сотрудника</h3><p class="meta">Человек должен хотя бы один раз открыть бота КРУГ.</p><div class="team-form"><input id="staffIdentifier" placeholder="Telegram ID или @username"><select id="staffRole"><option value="moderator">Модератор</option><option value="admin">Администратор</option></select><button class="btn lime" onclick="addStaff()">Добавить</button></div></div>`+staff.map(s=>`<div class="panel"><h3>${safeText(s.first_name||'Пользователь')}</h3><div class="meta">${s.username?'@'+safeText(s.username):'ID '+safeText(s.user_id)}</div><span class="staff-role">${s.role==='admin'?'Администратор':'Модератор'}</span><div class="manage-actions"><button class="btn back" onclick="removeStaff('${safeText(s.user_id)}')">Снять доступ</button></div></div>`).join('')}catch(error){toast(error.message)}
+}
+async function addStaff(){try{let identifier=document.getElementById('staffIdentifier').value.trim(),role=document.getElementById('staffRole').value;await krugJson('/api/admin/staff',{method:'POST',body:JSON.stringify({identifier,role})});toast('Доступ сотруднику сохранён');await showStaff()}catch(error){toast(error.message)}}
+async function removeStaff(id){if(!confirm('Снять доступ у сотрудника?'))return;try{await krugJson(`/api/admin/staff/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Доступ снят');await showStaff()}catch(error){toast(error.message)}}
+krugStaffButton.onclick=showStaff;
+const krugLoadProfileBeforeStaff=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeStaff();try{let d=await krugJson('/api/me'),role=d.staff_role||'';krugAdminButton.classList.toggle('show',!!role);krugStaffButton.classList.toggle('show',role==='owner'||role==='admin')}catch(_){krugAdminButton.classList.remove('show');krugStaffButton.classList.remove('show')}};
 krugLoadProfile();
 </script>
 </body>

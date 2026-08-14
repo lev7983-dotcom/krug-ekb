@@ -19,6 +19,16 @@ RATE_BUCKETS={}; RATE_LOCK=threading.Lock()
 
 def is_admin(user_id): return str(user_id) in ADMIN_IDS
 
+def staff_role(user_id):
+    if is_admin(user_id): return "owner"
+    try:
+        with connect() as db: row=db.execute("SELECT role FROM staff_roles WHERE user_id=?",(str(user_id),)).fetchone()
+        return (row["role"] if DATABASE_URL else row[0]) if row else ""
+    except Exception: return ""
+
+def can_moderate(user_id): return staff_role(user_id) in {"owner","admin","moderator"}
+def can_manage_staff(user_id): return staff_role(user_id) in {"owner","admin"}
+
 def rate_allowed(key,limit,window):
     now=time.time()
     with RATE_LOCK:
@@ -81,6 +91,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS reports(id {generic_id}, reporter_id TEXT NOT NULL, car_id {ref_id} NOT NULL, reason TEXT NOT NULL, details TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'new', created_at TEXT NOT NULL, UNIQUE(reporter_id,car_id), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS car_views(viewer_id TEXT NOT NULL, car_id {ref_id} NOT NULL, view_day TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(viewer_id,car_id,view_day), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS price_history(id {generic_id}, car_id {ref_id} NOT NULL, old_price INTEGER NOT NULL, new_price INTEGER NOT NULL, changed_at TEXT NOT NULL, FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS staff_roles(user_id TEXT PRIMARY KEY, role TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -206,7 +217,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":13,"release":"v35","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":14,"release":"v36","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -253,10 +264,18 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth(authenticated): return
             with connect() as db:
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"admin":is_admin(uid)})
+            role=staff_role(uid)
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"admin":role in {"owner","admin"},"staff_role":role})
+        if path=="/api/admin/staff":
+            if not self.require_auth(authenticated): return
+            if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+            with connect() as db:
+                rows=db.execute("""SELECT s.user_id,s.role,s.created_at,u.first_name,u.username
+                    FROM staff_roles s JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC""").fetchall()
+            return self.send_json([dict(r) for r in rows])
         if path=="/api/admin/reports":
             if not self.require_auth(authenticated): return
-            if not is_admin(uid): return self.send_json({"error":"Доступ только для модератора"},403)
+            if not can_moderate(uid): return self.send_json({"error":"Доступ только для модератора"},403)
             with connect() as db:
                 rows=db.execute("""SELECT r.*,c.name AS car_name,c.status AS car_status,c.owner_id,
                     u.first_name AS reporter_name FROM reports r JOIN cars c ON c.id=r.car_id
@@ -303,6 +322,19 @@ class Handler(SimpleHTTPRequestHandler):
                 first=str(data.get("first_name") or "Пользователь")[:80]; username=str(data.get("username") or "")[:80]
                 with connect() as db: db.execute("INSERT INTO users(id,first_name,username,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,updated_at=excluded.updated_at",(uid,first,username,now,now))
                 return self.send_json({"ok":True,"user":uid})
+            if path=="/api/admin/staff":
+                if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+                identifier=str(data.get("identifier") or "").strip().lstrip("@"); role=str(data.get("role") or "")
+                if role not in {"admin","moderator"}: return self.send_json({"error":"Выберите роль"},400)
+                if not identifier: return self.send_json({"error":"Укажите Telegram ID или username"},400)
+                with connect() as db:
+                    target=db.execute("SELECT id,first_name,username FROM users WHERE id=? OR LOWER(username)=LOWER(?)",(identifier,identifier)).fetchone()
+                    if not target: return self.send_json({"error":"Пользователь сначала должен открыть бота КРУГ"},404)
+                    target_id=str(target["id"] if DATABASE_URL else target[0])
+                    if target_id in ADMIN_IDS: return self.send_json({"error":"Владелец уже имеет полный доступ"},409)
+                    db.execute("""INSERT INTO staff_roles(user_id,role,created_by,created_at) VALUES(?,?,?,?)
+                        ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,created_by=excluded.created_by,created_at=excluded.created_at""",(target_id,role,uid,now))
+                return self.send_json({"ok":True,"user_id":target_id,"role":role},201)
             if path=="/api/cars":
                 if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
                 name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
@@ -391,6 +423,13 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/subscriptions":
             with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,))
             return self.send_json({"ok":True,"urgent":False})
+        staff=re.fullmatch(r"/api/admin/staff/([^/]+)",path)
+        if staff:
+            if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+            target=staff.group(1)
+            if target in ADMIN_IDS: return self.send_json({"error":"Нельзя удалить владельца"},400)
+            with connect() as db: cur=db.execute("DELETE FROM staff_roles WHERE user_id=?",(target,))
+            return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
         m=re.fullmatch(r"/api/cars/(\d+)",path)
         if not m: return self.send_json({"error":"Маршрут не найден"},404)
         with connect() as db:
@@ -402,7 +441,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth(authenticated): return
             moderation=re.fullmatch(r"/api/admin/reports/(\d+)",path)
             if moderation:
-                if not is_admin(uid): return self.send_json({"error":"Доступ только для модератора"},403)
+                if not can_moderate(uid): return self.send_json({"error":"Доступ только для модератора"},403)
                 action=data.get("action")
                 if action not in {"approve","block"}: return self.send_json({"error":"Неизвестное решение"},400)
                 report_id=int(moderation.group(1)); new_car_status="active" if action=="approve" else "blocked"; owner=None; car_name=""
