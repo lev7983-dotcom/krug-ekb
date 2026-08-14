@@ -90,6 +90,8 @@ def init_db():
         add_column(db,"cars","drive","TEXT DEFAULT ''")
         add_column(db,"cars","vin","TEXT DEFAULT ''")
         add_column(db,"cars","thumbnail","TEXT DEFAULT ''")
+        add_column(db,"cars","accept_exchange","INTEGER NOT NULL DEFAULT 0")
+        db.execute("UPDATE cars SET accept_exchange=1 WHERE type='Обмен' AND accept_exchange=0")
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
@@ -201,7 +203,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":10,"release":"v32","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":11,"release":"v33","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -295,6 +297,7 @@ class Handler(SimpleHTTPRequestHandler):
                 name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
+                accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
                 phone=str(data.get("phone","")).strip()
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
                 with connect() as db: contact_user=db.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
@@ -308,7 +311,7 @@ class Handler(SimpleHTTPRequestHandler):
                 transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin,thumbnail) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin,thumbnail)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin,thumbnail,accept_exchange) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange)); cid=cur.lastrowid
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
@@ -407,6 +410,7 @@ class Handler(SimpleHTTPRequestHandler):
                 name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(data.get("km") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
+                accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
                 phone=str(data.get("phone","")).strip(); images=data.get("images") if isinstance(data.get("images"),list) else []
                 images=[str(x) for x in images[:8] if x]
                 if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
@@ -420,7 +424,7 @@ class Handler(SimpleHTTPRequestHandler):
                 cid=int(m.group(1)); old_price=None
                 with connect() as db:
                     old=db.execute("SELECT price FROM cars WHERE id=? AND owner_id=? AND status<>'deleted'",(cid,uid)).fetchone(); old_price=int(old["price"] if DATABASE_URL else old[0]) if old else None
-                    cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,cid,uid))
+                    cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=?,accept_exchange=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange,cid,uid))
                     if cur.rowcount and old_price is not None and old_price!=price: db.execute("INSERT INTO price_history(car_id,old_price,new_price,changed_at) VALUES(?,?,?,?)",(cid,old_price,price,NOW().isoformat()))
                 if cur.rowcount and old_price is not None and price<old_price: threading.Thread(target=notify_price_drop,args=(cid,name[:80],old_price,price),daemon=True).start()
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)

@@ -452,7 +452,7 @@ const krugOpenBeforePrice=openCarV3;openCarV3=async function(...args){await krug
 </style>
 <script>
 // KRUG v28: consistent favourites in catalogue, saved list and car details.
-function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite;return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
+function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite;return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.accept_exchange||c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 function paintFavourite(id,state){
   let c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!state;
   document.querySelectorAll(`[data-favourite-id="${Number(id)}"]`).forEach(b=>{b.classList.toggle('saved',!!state);b.textContent=state?(b.classList.contains('heart')?'♥':'♥ В избранном'):(b.classList.contains('heart')?'♡':'♡ Добавить в избранное');b.setAttribute('aria-label',state?'Удалить из избранного':'Добавить в избранное')});
@@ -511,6 +511,18 @@ const krugNextStepBeforeNumbers=nextStep;nextStep=function(n){
 // KRUG v32: remove the obsolete gearbox field that was displayed but never saved.
 const krugLegacyGearbox=[...document.querySelectorAll('#create .step[data-step="2"] select')].find(field=>!field.id);
 krugLegacyGearbox?.closest('.field')?.remove();
+</script>
+<script>
+// KRUG v33: urgent sale and exchange switches now persist as real listing settings.
+const krugUrgentSwitch=[...document.querySelectorAll('#create .toggle')].find(row=>row.textContent.includes('Срочная продажа'))?.querySelector('.switch');
+const krugExchangeSwitch=[...document.querySelectorAll('#create .toggle')].find(row=>row.textContent.includes('Принимать обмен'))?.querySelector('.switch');
+function syncDealSwitches(){let selected=document.querySelector('.type-card.active')?.textContent||'';krugUrgentSwitch?.classList.toggle('on',selected.toLowerCase().includes('срочно'));krugExchangeSwitch?.classList.toggle('on',selected.includes('Обмен'))}
+document.querySelectorAll('.type-card').forEach(button=>button.addEventListener('click',()=>setTimeout(syncDealSwitches)));
+syncDealSwitches();
+const krugListingDataBeforeDealSwitches=krugListingData;krugListingData=function(){let data=krugListingDataBeforeDealSwitches(),urgent=!!krugUrgentSwitch?.classList.contains('on'),accept_exchange=!!krugExchangeSwitch?.classList.contains('on');return {...data,urgent,accept_exchange,type:accept_exchange?'Обмен':'Продажа'}};
+const krugEditBeforeDealSwitches=editCar;editCar=async function(id){await krugEditBeforeDealSwitches(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);krugUrgentSwitch?.classList.toggle('on',!!d.urgent);krugExchangeSwitch?.classList.toggle('on',!!d.accept_exchange||d.type==='Обмен')}catch(_){}};
+const krugOpenBeforeDealSwitches=openCarV3;openCarV3=async function(...args){await krugOpenBeforeDealSwitches(...args);let d=krugOpenedDetail;if(d?.accept_exchange)detailType.textContent=d.urgent?'Срочно · обмен':'Обмен возможен'};
+setMode=function(el,m){document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));el.classList.add('active');mode=m;if(m==='Обмен'){go('catalog');render(cars.filter(c=>c.accept_exchange||c.type==='Обмен'),'catalogCards')}};
 </script>
 </body>
 </html>
