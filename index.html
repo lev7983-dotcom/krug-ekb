@@ -595,5 +595,20 @@ krugMoreButton.onclick=()=>loadKrugCarPage(false);
 krugLoadCars=async function(){await loadKrugCarPage(true)};
 loadKrugCarPage(true);
 </script>
+<style>
+/* Public listing interest, intentionally quiet so price and model stay dominant. */
+.car-interest{display:flex;align-items:center;gap:5px;margin-top:10px;color:#737a72;font-size:11px;font-weight:700}
+.car-interest svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8}
+.detail-views{display:inline-flex;align-items:center;gap:6px;margin-top:5px;color:#737a72;font-size:12px;font-weight:750}
+</style>
+<script>
+// KRUG v38: daily unique public listing views.
+const krugEyeIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>`;
+const krugDetailViews=document.createElement('div');krugDetailViews.className='detail-views';detailSeller.after(krugDetailViews);
+function krugViewsLabel(value){let count=Math.max(0,Number(value)||0);return `${count} ${count%10===1&&count%100!==11?'просмотр':([2,3,4].includes(count%10)&&![12,13,14].includes(count%100)?'просмотра':'просмотров')}`}
+function paintCarViews(id,value){let count=Math.max(0,Number(value)||0);document.querySelectorAll(`[data-car-id="${Number(id)}"] .car-interest span`).forEach(x=>x.textContent=krugViewsLabel(count))}
+function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite,views=Math.max(0,Number(c.views)||0);return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.accept_exchange||c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div><div class="car-interest">${krugEyeIcon}<span>${krugViewsLabel(views)}</span></div></div></article>`}
+const krugOpenBeforePublicViews=openCarV3;openCarV3=async function(...args){await krugOpenBeforePublicViews(...args);let d=krugOpenedDetail;if(!d){krugDetailViews.textContent='';return}let count=Math.max(0,Number(d.views)||0),c=cars.find(x=>Number(x.id)===Number(d.id));if(c)c.views=count;krugDetailViews.innerHTML=`${krugEyeIcon}<span>${krugViewsLabel(count)}</span>`;paintCarViews(d.id,count)};
+</script>
 </body>
 </html>
