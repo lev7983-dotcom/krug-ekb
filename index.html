@@ -507,5 +507,10 @@ krugListingData=function(){
 const krugNextStepBeforeNumbers=nextStep;nextStep=function(n){
   try{if(n===2){if(carName.value.trim().length<2)throw new Error('Укажите марку и модель');let y=krugNumber(carYear.value),p=krugNumber(carPrice.value);if(!y||y<1950||y>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');if(!p||p<1000)throw new Error('Укажите корректную цену')}if(n===3&&!String(carKm.value).trim())throw new Error('Укажите пробег, для нового автомобиля введите 0');return krugNextStepBeforeNumbers(n)}catch(error){toast(error.message)}};
 </script>
+<script>
+// KRUG v32: remove the obsolete gearbox field that was displayed but never saved.
+const krugLegacyGearbox=[...document.querySelectorAll('#create .step[data-step="2"] select')].find(field=>!field.id);
+krugLegacyGearbox?.closest('.field')?.remove();
+</script>
 </body>
 </html>
