@@ -721,7 +721,7 @@ function krugServerCatalogueQuery(offset){
   return params.toString()
 }
 loadKrugCarPage=async function(reset=false){
-  if(location.protocol==='file:'){krugClientApplyCatalog();return}if(krugMoreButton.classList.contains('busy'))return;
+  if(location.protocol==='file:'){krugClientApplyCatalog();return}if(!reset&&krugMoreButton.classList.contains('busy'))return;
   let requestId=++krugServerSearchSeq,offset=reset?0:krugCatalogOffset;krugMoreButton.classList.add('busy');if(reset)krugFilterResult.textContent='Ищем автомобили…';
   try{let d=await krugJson(`/api/cars?${krugServerCatalogueQuery(offset)}`);if(requestId!==krugServerSearchSeq)return;let known=new Set((reset?[]:cars).map(car=>Number(car.id)));cars=reset?d.items:[...cars,...d.items.filter(car=>!known.has(Number(car.id)))];krugCatalogOffset=offset+d.items.length;krugCatalogHasMore=!!d.has_more;krugCatalogTotal=Number(d.total)||0;render(cars,'catalogCards');if(!cars.length)document.getElementById('catalogCards').innerHTML='<div class="panel search-empty"><h3>Автомобили не найдены</h3><p class="meta">Попробуйте изменить запрос или сбросить фильтры.</p><button class="btn back" type="button" onclick="document.querySelector(\'.filter-reset\').click()">Сбросить фильтры</button></div>';paintKrugMore()}
   catch(error){if(requestId===krugServerSearchSeq)toast(error.message)}finally{if(requestId===krugServerSearchSeq)krugMoreButton.classList.remove('busy')}
