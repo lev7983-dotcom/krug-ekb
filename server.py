@@ -221,7 +221,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":17,"release":"v39","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":18,"release":"v40","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
             with connect() as db:
