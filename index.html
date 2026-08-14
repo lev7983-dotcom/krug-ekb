@@ -680,13 +680,18 @@ const krugBrandAliases={
   geely:['geely','джили'],haval:['haval','хавал'],chery:['chery','чери'],uaz:['uaz','уаз'],gaz:['gaz','газ']
 };
 const krugAliasIndex=Object.entries(krugBrandAliases).reduce((index,[brand,names])=>{names.forEach(name=>index[name.replace(/ё/g,'е')]=brand);return index},{});
-function krugSearchWords(value){let clean=String(value||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]+/g,' ').trim();return clean?clean.split(/\s+/).map(word=>krugAliasIndex[word]||word):[]}
-function krugMatchesCar(car,query){let wanted=krugSearchWords(query),available=krugSearchWords(`${car.name||''} ${car.brand||''} ${car.model||''}`);return wanted.every(word=>available.some(candidate=>candidate.includes(word)||word.includes(candidate)))}
+const krugCyrillicLatin={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sh',ъ:'',ы:'i',ь:'',э:'e',ю:'yu',я:'ya'};
+function krugPhonetic(word){return [...word].map(letter=>krugCyrillicLatin[letter]??letter).join('').replace(/c/g,'k').replace(/q/g,'k').replace(/y/g,'i')}
+function krugSearchWords(value){let clean=String(value||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]+/g,' ').trim();return clean?clean.split(/\s+/).map(word=>krugAliasIndex[word]||krugPhonetic(word)):[]}
+function krugDistance(a,b){let row=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(next[j-1]+1,row[j]+1,row[j-1]+(a[i-1]===b[j-1]?0:1));row=next}return row[b.length]}
+function krugMatchesCar(car,query){let wanted=krugSearchWords(query),available=krugSearchWords(`${car.name||''} ${car.brand||''} ${car.model||''}`);return wanted.every(word=>available.some(candidate=>candidate.includes(word)||word.includes(candidate)||(word.length>=4&&candidate.length>=4&&krugDistance(word,candidate)<=1)))}
 applyCatalog=function(){
   let q=(catalogSearch?.value||'').trim(),list=cars.filter(c=>krugMatchesCar(c,q));
   if(catalogRange!=='all'){if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);else{let[a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}}
   if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
-  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;if(typeof paintKrugMore==='function')paintKrugMore()
+  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');
+  if(!list.length)document.getElementById('catalogCards').innerHTML='<div class="panel search-empty"><h3>Автомобили не найдены</h3><p class="meta">Попробуйте написать марку или модель по-другому либо сбросьте фильтры.</p><button class="btn back" type="button" onclick="document.querySelector(\'.filter-reset\').click()">Сбросить фильтры</button></div>';
+  krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;if(typeof paintKrugMore==='function')paintKrugMore()
 };
 // Earlier listeners retain the previous function reference, so bind the enhanced search explicitly.
 catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);
