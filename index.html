@@ -477,5 +477,8 @@ carPhone.addEventListener('input',paintContactHint);paintContactHint();
 const krugListingDataBeforeContact=krugListingData;krugListingData=function(){let data=krugListingDataBeforeContact();if(!data.phone&&!krugTgUser?.username)throw new Error('Укажите телефон для связи с покупателем');return data};
 const krugOpenBeforeContact=openCarV3;openCarV3=async function(...args){await krugOpenBeforeContact(...args);let d=krugOpenedDetail;if(!d)return;sellerContact.hidden=!d.is_owner&&!d.seller_username&&!d.phone;if(sellerContact.hidden)toast('У продавца пока нет доступного контакта')};
 </script>
+<script>
+// KRUG v30: profile counters only include listings that are actually available.
+</script>
 </body>
 </html>
