@@ -711,5 +711,24 @@ krugRecentButton.onclick=showRecentlyViewed;
 const krugCatalogNav=document.querySelector('.nav [data-go="catalog"]');
 krugCatalogNav?.addEventListener('click',()=>{document.querySelector('#catalog .page-head h1').textContent='Автомобили';document.querySelector('#catalog .page-head p').textContent='Екатеринбург · частники и дилеры';applyCatalog()});
 </script>
+<script>
+// KRUG v44: catalogue search, filters and sorting run across the full server catalogue.
+const krugClientApplyCatalog=applyCatalog;let krugServerSearchTimer=0,krugServerSearchSeq=0;
+function krugServerCatalogueQuery(offset){
+  let params=new URLSearchParams({paged:'1',limit:String(KRUG_PAGE_SIZE),offset:String(offset),sort:catalogSort?.value||'new'}),query=krugSearchWords(catalogSearch?.value||'').join(' ');
+  if(query)params.set('q',query);if(filterTransmission.value)params.set('transmission',filterTransmission.value);if(filterBody.value)params.set('body',filterBody.value);if(filterDrive.value)params.set('drive',filterDrive.value);
+  if(catalogRange!=='all'){if(catalogRange==='300+')params.set('price_min','300000');else{let[a,z]=catalogRange.split('-').map(value=>Number(value)*1000);params.set('price_min',String(a));params.set('price_max',String(z))}}
+  return params.toString()
+}
+loadKrugCarPage=async function(reset=false){
+  if(location.protocol==='file:'){krugClientApplyCatalog();return}if(krugMoreButton.classList.contains('busy'))return;
+  let requestId=++krugServerSearchSeq,offset=reset?0:krugCatalogOffset;krugMoreButton.classList.add('busy');if(reset)krugFilterResult.textContent='Ищем автомобили…';
+  try{let d=await krugJson(`/api/cars?${krugServerCatalogueQuery(offset)}`);if(requestId!==krugServerSearchSeq)return;let known=new Set((reset?[]:cars).map(car=>Number(car.id)));cars=reset?d.items:[...cars,...d.items.filter(car=>!known.has(Number(car.id)))];krugCatalogOffset=offset+d.items.length;krugCatalogHasMore=!!d.has_more;krugCatalogTotal=Number(d.total)||0;render(cars,'catalogCards');if(!cars.length)document.getElementById('catalogCards').innerHTML='<div class="panel search-empty"><h3>Автомобили не найдены</h3><p class="meta">Попробуйте изменить запрос или сбросить фильтры.</p><button class="btn back" type="button" onclick="document.querySelector(\'.filter-reset\').click()">Сбросить фильтры</button></div>';paintKrugMore()}
+  catch(error){if(requestId===krugServerSearchSeq)toast(error.message)}finally{if(requestId===krugServerSearchSeq)krugMoreButton.classList.remove('busy')}
+};
+applyCatalog=function(){clearTimeout(krugServerSearchTimer);krugServerSearchTimer=setTimeout(()=>loadKrugCarPage(true),220)};
+catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);[filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
+setTimeout(()=>loadKrugCarPage(true),0);
+</script>
 </body>
 </html>

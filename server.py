@@ -105,12 +105,16 @@ def init_db():
         add_column(db,"cars","vin","TEXT DEFAULT ''")
         add_column(db,"cars","thumbnail","TEXT DEFAULT ''")
         add_column(db,"cars","accept_exchange","INTEGER NOT NULL DEFAULT 0")
+        add_column(db,"cars","search_key","TEXT DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_car_views_viewer_created ON car_views(viewer_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_reports_car_status ON reports(car_id,status)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_cars_search_key ON cars(search_key)")
         db.execute("UPDATE cars SET accept_exchange=1 WHERE type='Обмен' AND accept_exchange=0")
+        for row in db.execute("SELECT id,name FROM cars WHERE search_key IS NULL OR search_key='' ").fetchall():
+            db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(row["name"] if DATABASE_URL else row[1]),row["id"] if DATABASE_URL else row[0]))
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
@@ -142,6 +146,22 @@ def auth_context(headers,data=None,query=None):
 def user_id(headers,data=None,query=None):
     value=headers.get("X-Krug-User") or (data or {}).get("user") or (query or {}).get("user",["local-user"])[0]
     return re.sub(r"[^a-zA-Z0-9_-]","",str(value))[:80] or "local-user"
+
+SEARCH_ALIASES={
+    "тойота":"toyota","тайота":"toyota","тоёта":"toyota","форд":"ford","лада":"lada","ваз":"lada","vaz":"lada",
+    "фольксваген":"volkswagen","фольцваген":"volkswagen","vw":"volkswagen","мерседес":"mercedes","мерин":"mercedes",
+    "бмв":"bmw","хендай":"hyundai","хундай":"hyundai","хёндай":"hyundai","киа":"kia","ниссан":"nissan",
+    "рено":"renault","шевроле":"chevrolet","шкода":"skoda","ауди":"audi","хонда":"honda","мазда":"mazda",
+    "митсубиси":"mitsubishi","мицубиси":"mitsubishi","лексус":"lexus","субару":"subaru","пежо":"peugeot",
+    "ситроен":"citroen","опель":"opel","вольво":"volvo","джили":"geely","хавал":"haval","чери":"chery","уаз":"uaz","газ":"gaz"
+}
+CYRILLIC_LATIN=dict(zip("абвгдежзийклмнопрстуфхцчшщъыьэюя",("a","b","v","g","d","e","zh","z","i","i","k","l","m","n","o","p","r","s","t","u","f","h","c","ch","sh","sh","","i","","e","yu","ya")))
+def normalize_search(value):
+    words=re.sub(r"[^a-zа-я0-9]+"," ",str(value or "").lower().replace("ё","е")).split(); result=[]
+    for word in words:
+        if word in SEARCH_ALIASES: result.append(SEARCH_ALIASES[word]); continue
+        result.append("".join(CYRILLIC_LATIN.get(letter,letter) for letter in word).replace("c","k").replace("q","k").replace("y","i"))
+    return " ".join(result)
 
 def car_dict(row,faved=False):
     d=dict(row); until=d.get("urgent_until")
@@ -222,17 +242,29 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":19,"release":"v43","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":20,"release":"v44","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
+            conditions=["c.status='active'"]; filter_params=[]
+            for token in normalize_search(query.get("q",[""])[0]).split(): conditions.append("c.search_key LIKE ?"); filter_params.append(f"%{token}%")
+            for key,column in (("transmission","c.transmission"),("body","c.body_type"),("drive","c.drive")):
+                value=str(query.get(key,[""])[0])[:30]
+                if value: conditions.append(f"{column}=?"); filter_params.append(value)
+            try:
+                minimum=max(0,int(query.get("price_min",["0"])[0] or 0)); maximum=max(0,int(query.get("price_max",["0"])[0] or 0))
+            except ValueError: minimum=maximum=0
+            if minimum: conditions.append("c.price>=?"); filter_params.append(minimum)
+            if maximum: conditions.append("c.price<=?"); filter_params.append(maximum)
+            where=" AND ".join(conditions); sort=query.get("sort",["new"])[0]
+            order={"cheap":"c.price ASC,c.id DESC","expensive":"c.price DESC,c.id DESC","year":"c.year DESC,c.id DESC"}.get(sort,"c.urgent DESC,c.id DESC")
             with connect() as db:
-                total_row=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone() if paged else None
+                total_row=db.execute(f"SELECT COUNT(*) AS count FROM cars c WHERE {where}",tuple(filter_params)).fetchone() if paged else None
                 sql="""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
                     (SELECT COUNT(*) FROM car_views v WHERE v.car_id=c.id) AS views,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
-                    WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC"""
-                params=[uid]
+                    WHERE """+where+" ORDER BY "+order
+                params=[uid,*filter_params]
                 if paged: sql+=" LIMIT ? OFFSET ?"; params.extend([limit,offset])
                 rows=db.execute(sql,tuple(params)).fetchall()
             summaries=[]
@@ -381,6 +413,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
                     cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin,thumbnail,accept_exchange) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange)); cid=cur.lastrowid
+                    db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name[:80]),cid))
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
@@ -522,6 +555,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     old=db.execute("SELECT price FROM cars WHERE id=? AND owner_id=? AND status<>'deleted'",(cid,uid)).fetchone(); old_price=int(old["price"] if DATABASE_URL else old[0]) if old else None
                     cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=?,accept_exchange=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange,cid,uid))
+                    if cur.rowcount: db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name[:80]),cid))
                     if cur.rowcount and old_price is not None and old_price!=price: db.execute("INSERT INTO price_history(car_id,old_price,new_price,changed_at) VALUES(?,?,?,?)",(cid,old_price,price,NOW().isoformat()))
                 if cur.rowcount and old_price is not None and price<old_price: threading.Thread(target=notify_price_drop,args=(cid,name[:80],old_price,price),daemon=True).start()
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
