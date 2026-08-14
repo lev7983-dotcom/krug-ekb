@@ -108,6 +108,7 @@ def init_db():
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_car_views_viewer_created ON car_views(viewer_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_reports_car_status ON reports(car_id,status)")
         db.execute("UPDATE cars SET accept_exchange=1 WHERE type='Обмен' AND accept_exchange=0")
         add_column(db,"users","company","TEXT DEFAULT ''")
@@ -221,7 +222,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":18,"release":"v40","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":19,"release":"v43","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
             with connect() as db:
@@ -251,7 +252,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not row: return self.send_json({"error":"Объявление не найдено"},404)
             with connect() as db:
                 if row["owner_id"]!=uid:
-                    try: db.execute("INSERT INTO car_views(viewer_id,car_id,view_day,created_at) VALUES(?,?,?,?) ON CONFLICT(viewer_id,car_id,view_day) DO NOTHING",(uid,int(detail.group(1)),NOW().date().isoformat(),NOW().isoformat()))
+                    try: db.execute("INSERT INTO car_views(viewer_id,car_id,view_day,created_at) VALUES(?,?,?,?) ON CONFLICT(viewer_id,car_id,view_day) DO UPDATE SET created_at=excluded.created_at",(uid,int(detail.group(1)),NOW().date().isoformat(),NOW().isoformat()))
                     except sqlite3.IntegrityError: pass
                 vr=db.execute("SELECT COUNT(*) AS count FROM car_views WHERE car_id=?",(int(detail.group(1)),)).fetchone(); favr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE car_id=?",(int(detail.group(1)),)).fetchone()
                 phr=db.execute("SELECT old_price,new_price,changed_at FROM price_history WHERE car_id=? ORDER BY id DESC LIMIT 1",(int(detail.group(1)),)).fetchone()
@@ -274,6 +275,17 @@ class Handler(SimpleHTTPRequestHandler):
                     FROM favourites f JOIN cars c ON c.id=f.car_id LEFT JOIN users u ON u.id=c.owner_id
                     WHERE f.user_id=? AND c.status='active' ORDER BY f.created_at DESC""",(uid,)).fetchall()
             return self.send_json([car_dict(r,True) for r in rows])
+        if path=="/api/recent":
+            if not self.require_auth(authenticated): return
+            with connect() as db:
+                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                    (SELECT COUNT(*) FROM car_views all_views WHERE all_views.car_id=c.id) AS views,
+                    EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved,
+                    MAX(v.created_at) AS viewed_at
+                    FROM car_views v JOIN cars c ON c.id=v.car_id LEFT JOIN users u ON u.id=c.owner_id
+                    WHERE v.viewer_id=? AND c.status='active'
+                    GROUP BY c.id,u.role,u.company ORDER BY viewed_at DESC LIMIT 20""",(uid,uid)).fetchall()
+            return self.send_json([car_dict(r,r["faved"]) for r in rows])
         if path=="/api/me":
             if not self.require_auth(authenticated): return
             with connect() as db:

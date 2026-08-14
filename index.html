@@ -697,5 +697,19 @@ applyCatalog=function(){
 catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);
 [filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
 </script>
+<script>
+// KRUG v43: server-backed recently viewed cars.
+const krugRecentButton=document.createElement('button');
+krugRecentButton.className='menu-item';krugRecentButton.dataset.icon='◷';krugRecentButton.innerHTML='Недавно просмотренные <span>›</span>';
+const krugFavouriteMenu=[...document.querySelectorAll('#profile .menu-item')].find(button=>button.textContent.includes('Избранное'));
+if(krugFavouriteMenu)krugFavouriteMenu.insertAdjacentElement('afterend',krugRecentButton);else document.querySelector('#profile .menu-list')?.append(krugRecentButton);
+async function showRecentlyViewed(){
+  try{let list=await krugJson('/api/recent');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Недавно просмотренные';document.querySelector('#catalog .page-head p').textContent='Автомобили, которые вы открывали';document.getElementById('catalogCards').innerHTML=list.length?list.map(card).join(''):'<div class="panel search-empty"><h3>История пока пустая</h3><p class="meta">Откройте любое объявление — оно появится здесь.</p></div>';krugMoreButton?.classList.remove('show')}
+  catch(error){toast(error.message)}
+}
+krugRecentButton.onclick=showRecentlyViewed;
+const krugCatalogNav=document.querySelector('.nav [data-go="catalog"]');
+krugCatalogNav?.addEventListener('click',()=>{document.querySelector('#catalog .page-head h1').textContent='Автомобили';document.querySelector('#catalog .page-head p').textContent='Екатеринбург · частники и дилеры';applyCatalog()});
+</script>
 </body>
 </html>
