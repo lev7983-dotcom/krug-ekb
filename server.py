@@ -105,6 +105,10 @@ def init_db():
         add_column(db,"cars","vin","TEXT DEFAULT ''")
         add_column(db,"cars","thumbnail","TEXT DEFAULT ''")
         add_column(db,"cars","accept_exchange","INTEGER NOT NULL DEFAULT 0")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_reports_car_status ON reports(car_id,status)")
         db.execute("UPDATE cars SET accept_exchange=1 WHERE type='Обмен' AND accept_exchange=0")
         add_column(db,"users","company","TEXT DEFAULT ''")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
@@ -217,16 +221,24 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":14,"release":"v36","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":15,"release":"v37","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
+            paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
             with connect() as db:
-                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                total_row=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone() if paged else None
+                sql="""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
-                    WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC""",(uid,)).fetchall()
+                    WHERE c.status='active' ORDER BY c.urgent DESC,c.id DESC"""
+                params=[uid]
+                if paged: sql+=" LIMIT ? OFFSET ?"; params.extend([limit,offset])
+                rows=db.execute(sql,tuple(params)).fetchall()
             summaries=[]
             for row in rows:
                 item=car_dict(row,row["faved"]); item["image"]=item.get("thumbnail") or item.get("image") or ""; item.pop("images",None); item.pop("thumbnail",None); summaries.append(item)
+            if paged:
+                total=int(total_row["count"] if DATABASE_URL else total_row[0])
+                return self.send_json({"items":summaries,"total":total,"offset":offset,"limit":limit,"has_more":offset+len(summaries)<total})
             return self.send_json(summaries)
         detail=re.fullmatch(r"/api/cars/(\d+)",path)
         if detail:

@@ -578,5 +578,22 @@ krugStaffButton.onclick=showStaff;
 const krugLoadProfileBeforeStaff=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeStaff();try{let d=await krugJson('/api/me'),role=d.staff_role||'';krugAdminButton.classList.toggle('show',!!role);krugStaffButton.classList.toggle('show',role==='owner'||role==='admin')}catch(_){krugAdminButton.classList.remove('show');krugStaffButton.classList.remove('show')}};
 krugLoadProfile();
 </script>
+<style>
+.catalog-more{display:none;width:calc(100% - 32px);margin:0 16px 22px}.catalog-more.show{display:block}.catalog-more.busy{opacity:.55;pointer-events:none}
+</style>
+<script>
+// KRUG v37: paginated catalogue keeps mobile rendering and database reads light.
+let krugCatalogOffset=0,krugCatalogHasMore=false,krugCatalogTotal=0;const KRUG_PAGE_SIZE=20;
+const krugMoreButton=document.createElement('button');krugMoreButton.className='btn back catalog-more';krugMoreButton.textContent='Показать ещё автомобили';document.querySelector('#catalog .section').after(krugMoreButton);
+function paintKrugMore(){let regular=document.querySelector('#catalog .page-head h1')?.textContent==='Автомобили';krugMoreButton.classList.toggle('show',regular&&krugCatalogHasMore);krugFilterResult.textContent=`Загружено ${cars.length} из ${krugCatalogTotal||cars.length}`}
+async function loadKrugCarPage(reset=false){
+  if(location.protocol==='file:'||krugMoreButton.classList.contains('busy'))return;
+  krugMoreButton.classList.add('busy');
+  try{let offset=reset?0:krugCatalogOffset,d=await krugJson(`/api/cars?paged=1&limit=${KRUG_PAGE_SIZE}&offset=${offset}`),known=new Set((reset?[]:cars).map(x=>Number(x.id)));cars=reset?d.items:[...cars,...d.items.filter(x=>!known.has(Number(x.id)))];krugCatalogOffset=offset+d.items.length;krugCatalogHasMore=!!d.has_more;krugCatalogTotal=Number(d.total)||cars.length;renderAll();paintKrugMore();await krugLoadProfile()}catch(error){toast(error.message)}finally{krugMoreButton.classList.remove('busy')}
+}
+krugMoreButton.onclick=()=>loadKrugCarPage(false);
+krugLoadCars=async function(){await loadKrugCarPage(true)};
+loadKrugCarPage(true);
+</script>
 </body>
 </html>
