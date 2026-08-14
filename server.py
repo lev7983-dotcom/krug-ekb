@@ -221,7 +221,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":16,"release":"v38","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":17,"release":"v39","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
             with connect() as db:
@@ -277,9 +277,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path=="/api/me":
             if not self.require_auth(authenticated): return
             with connect() as db:
-                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
+                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); vr=db.execute("SELECT COUNT(*) AS count FROM car_views v JOIN cars c ON c.id=v.car_id WHERE c.owner_id=? AND c.status<>'deleted'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]; views=vr["count"] if DATABASE_URL else vr[0]
             role=staff_role(uid)
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"admin":role in {"owner","admin"},"staff_role":role})
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"views":views,"admin":role in {"owner","admin"},"staff_role":role})
         if path=="/api/admin/staff":
             if not self.require_auth(authenticated): return
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
