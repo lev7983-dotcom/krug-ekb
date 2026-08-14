@@ -688,6 +688,9 @@ applyCatalog=function(){
   if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
   let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;if(typeof paintKrugMore==='function')paintKrugMore()
 };
+// Earlier listeners retain the previous function reference, so bind the enhanced search explicitly.
+catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);
+[filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
 </script>
 </body>
 </html>
