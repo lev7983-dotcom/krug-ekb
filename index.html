@@ -540,5 +540,20 @@ function restoreKrugDraftDealSwitches(){
 [krugUrgentSwitch,krugExchangeSwitch].filter(Boolean).forEach(button=>button.addEventListener('click',()=>setTimeout(saveKrugDraft)));
 restoreKrugDraftDealSwitches();
 </script>
+<style>
+.moderation-reason{display:inline-block;margin:8px 0;padding:5px 8px;border-radius:8px;background:#fff0e8;color:#9c351c;font-size:12px;font-weight:800}.admin-menu{display:none}.admin-menu.show{display:flex}
+</style>
+<script>
+// KRUG v35: owner-only moderation queue for reported listings.
+const krugAdminButton=document.createElement('button');krugAdminButton.className='menu-item admin-menu';krugAdminButton.innerHTML='Модерация жалоб <span>›</span>';document.querySelector('#profile .menu-list').append(krugAdminButton);
+const krugReportReasons={fraud:'Мошенничество',wrong_info:'Неверные данные',sold:'Уже продано',duplicate:'Дубликат',other:'Другая причина'};
+async function showModeration(){
+  try{let reports=await krugJson('/api/admin/reports');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Модерация';document.getElementById('catalogCards').innerHTML=reports.map(r=>`<div class="panel"><div class="eyebrow"><span class="dot"></span>жалоба №${Number(r.id)}</div><h3>${safeText(r.car_name)}</h3><span class="moderation-reason">${safeText(krugReportReasons[r.reason]||r.reason)}</span>${r.details?`<p>${safeText(r.details)}</p>`:''}<div class="meta">Отправитель: ${safeText(r.reporter_name||'Пользователь')}</div><div class="manage-actions"><button class="btn lime" onclick="moderateReport(${Number(r.id)},'approve')">Вернуть объявление</button><button class="btn sold-button" onclick="moderateReport(${Number(r.id)},'block')">Заблокировать</button></div></div>`).join('')||'<div class="panel"><h3>Новых жалоб нет</h3></div>'}catch(error){toast(error.message)}
+}
+async function moderateReport(id,action){try{await krugJson(`/api/admin/reports/${id}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='approve'?'Объявление возвращено':'Объявление заблокировано');await showModeration()}catch(error){toast(error.message)}}
+krugAdminButton.onclick=showModeration;
+const krugLoadProfileBeforeAdmin=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeAdmin();try{let d=await krugJson('/api/me');krugAdminButton.classList.toggle('show',!!d.admin)}catch(_){krugAdminButton.classList.remove('show')}};
+krugLoadProfile();
+</script>
 </body>
 </html>

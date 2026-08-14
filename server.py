@@ -12,9 +12,12 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
+ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 WEBHOOK_SECRET=hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else ""
 NOW=lambda: datetime.now(timezone.utc)
 RATE_BUCKETS={}; RATE_LOCK=threading.Lock()
+
+def is_admin(user_id): return str(user_id) in ADMIN_IDS
 
 def rate_allowed(key,limit,window):
     now=time.time()
@@ -203,7 +206,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":12,"release":"v34","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":13,"release":"v35","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -250,7 +253,15 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth(authenticated): return
             with connect() as db:
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions})
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"admin":is_admin(uid)})
+        if path=="/api/admin/reports":
+            if not self.require_auth(authenticated): return
+            if not is_admin(uid): return self.send_json({"error":"Доступ только для модератора"},403)
+            with connect() as db:
+                rows=db.execute("""SELECT r.*,c.name AS car_name,c.status AS car_status,c.owner_id,
+                    u.first_name AS reporter_name FROM reports r JOIN cars c ON c.id=r.car_id
+                    LEFT JOIN users u ON u.id=r.reporter_id WHERE r.status='new' ORDER BY r.id DESC""").fetchall()
+            return self.send_json([dict(r) for r in rows])
         if path=="/api/my-cars":
             if not self.require_auth(authenticated): return
             with connect() as db: rows=db.execute("""SELECT c.*, (SELECT COUNT(*) FROM reports r WHERE r.car_id=c.id) AS report_count,
@@ -389,6 +400,22 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             path=urlparse(self.path).path; data=self.read_json(); uid,authenticated,_=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
+            moderation=re.fullmatch(r"/api/admin/reports/(\d+)",path)
+            if moderation:
+                if not is_admin(uid): return self.send_json({"error":"Доступ только для модератора"},403)
+                action=data.get("action")
+                if action not in {"approve","block"}: return self.send_json({"error":"Неизвестное решение"},400)
+                report_id=int(moderation.group(1)); new_car_status="active" if action=="approve" else "blocked"; owner=None; car_name=""
+                with connect() as db:
+                    row=db.execute("""SELECT r.car_id,c.owner_id,c.name FROM reports r JOIN cars c ON c.id=r.car_id
+                        WHERE r.id=? AND r.status='new'""",(report_id,)).fetchone()
+                    if not row: return self.send_json({"error":"Жалоба уже рассмотрена"},404)
+                    car_id=row["car_id"] if DATABASE_URL else row[0]; owner=row["owner_id"] if DATABASE_URL else row[1]; car_name=row["name"] if DATABASE_URL else row[2]
+                    db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=?",(new_car_status,NOW().isoformat(),car_id))
+                    db.execute("UPDATE reports SET status=? WHERE car_id=? AND status='new'",("approved" if action=="approve" else "blocked",car_id))
+                result="возвращено в каталог" if action=="approve" else "заблокировано"
+                threading.Thread(target=notify_exchange_user,args=(owner,f"Решение модерации: объявление «{car_name}» {result}."),daemon=True).start()
+                return self.send_json({"ok":True,"action":action,"car_status":new_car_status})
             if path=="/api/profile":
                 role="dealer" if data.get("role")=="dealer" else "private"; company=str(data.get("company") or "").strip()[:100]
                 if role=="dealer" and len(company)<2: return self.send_json({"error":"Укажите название компании"},400)
