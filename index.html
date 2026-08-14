@@ -667,5 +667,27 @@ h1,.section h2,.page-head h1{color:#f7f3ec}.section-head{border-bottom:1px solid
 // Keep Telegram browser chrome aligned with the selected luxury palette.
 try{window.Telegram?.WebApp?.setHeaderColor?.('#101211');window.Telegram?.WebApp?.setBackgroundColor?.('#101211');window.Telegram?.WebApp?.setBottomBarColor?.('#0f1110')}catch(_){}
 </script>
+<script>
+// KRUG v41: Russian/Latin brand aliases and typo-friendly catalogue search.
+const krugBrandAliases={
+  toyota:['toyota','тойота','тайота','тоёта'],ford:['ford','форд'],lada:['lada','лада','ваз','vaz'],
+  volkswagen:['volkswagen','фольксваген','фольцваген','vw'],mercedes:['mercedes','мерседес','мерин'],
+  bmw:['bmw','бмв'],hyundai:['hyundai','хендай','хундай','хёндай'],kia:['kia','киа'],
+  nissan:['nissan','ниссан'],renault:['renault','рено'],chevrolet:['chevrolet','шевроле'],
+  skoda:['skoda','шкода'],audi:['audi','ауди'],honda:['honda','хонда'],mazda:['mazda','мазда'],
+  mitsubishi:['mitsubishi','митсубиси','мицубиси'],lexus:['lexus','лексус'],subaru:['subaru','субару'],
+  peugeot:['peugeot','пежо'],citroen:['citroen','ситроен'],opel:['opel','опель'],volvo:['volvo','вольво'],
+  geely:['geely','джили'],haval:['haval','хавал'],chery:['chery','чери'],uaz:['uaz','уаз'],gaz:['gaz','газ']
+};
+const krugAliasIndex=Object.entries(krugBrandAliases).reduce((index,[brand,names])=>{names.forEach(name=>index[name.replace(/ё/g,'е')]=brand);return index},{});
+function krugSearchWords(value){let clean=String(value||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]+/g,' ').trim();return clean?clean.split(/\s+/).map(word=>krugAliasIndex[word]||word):[]}
+function krugMatchesCar(car,query){let wanted=krugSearchWords(query),available=krugSearchWords(`${car.name||''} ${car.brand||''} ${car.model||''}`);return wanted.every(word=>available.some(candidate=>candidate.includes(word)||word.includes(candidate)))}
+applyCatalog=function(){
+  let q=(catalogSearch?.value||'').trim(),list=cars.filter(c=>krugMatchesCar(c,q));
+  if(catalogRange!=='all'){if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);else{let[a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}}
+  if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
+  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;if(typeof paintKrugMore==='function')paintKrugMore()
+};
+</script>
 </body>
 </html>
