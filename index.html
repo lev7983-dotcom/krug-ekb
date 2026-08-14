@@ -480,5 +480,32 @@ const krugOpenBeforeContact=openCarV3;openCarV3=async function(...args){await kr
 <script>
 // KRUG v30: profile counters only include listings that are actually available.
 </script>
+<style>
+.number-hint{display:block;margin-top:6px;color:#777;font-size:11px}
+</style>
+<script>
+// KRUG v31: robust year, price and mileage entry with grouped-number support.
+const krugNumericFields=[carYear,carPrice,carKm];
+const krugOnlyDigits=value=>String(value??'').replace(/\D/g,'');
+const krugNumber=value=>Number(krugOnlyDigits(value)||0);
+krugNumericFields.forEach(field=>{field.type='text';field.inputMode='numeric';field.autocomplete='off';field.addEventListener('input',()=>{let digits=krugOnlyDigits(field.value);field.value=field===carYear?digits.slice(0,4):digits.slice(0,9)});field.addEventListener('blur',()=>{let n=krugNumber(field.value);if(n)field.value=field===carYear?String(n):new Intl.NumberFormat('ru-RU').format(n)});field.addEventListener('focus',()=>field.value=krugOnlyDigits(field.value))});
+carKm.insertAdjacentHTML('afterend','<small class="number-hint">Можно вводить с пробелами: например, 86 000</small>');
+carPrice.insertAdjacentHTML('afterend','<small class="number-hint">Можно вводить с пробелами: например, 1 850 000</small>');
+krugListingData=function(){
+  let active=document.querySelector('.type-card.active')?.textContent||'',name=carName.value.trim(),year=krugNumber(carYear.value),price=krugNumber(carPrice.value),kmText=String(carKm.value).trim(),km=krugNumber(kmText),phone=carPhone.value.trim(),vin=carVin.value.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'');
+  if(name.length<2)throw new Error('Укажите марку и модель автомобиля');
+  if(!year||year<1950||year>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');
+  if(!price||price<1000)throw new Error('Укажите корректную цену');
+  if(!kmText)throw new Error('Укажите пробег автомобиля, для нового автомобиля введите 0');
+  if(km<0||km>2000000)throw new Error('Проверьте пробег');
+  if(phone&&phone.replace(/\D/g,'').length<10)throw new Error('Проверьте номер телефона');
+  if(!phone&&!krugTgUser?.username)throw new Error('Укажите телефон для связи с покупателем');
+  if(!legalAccepted.checked)throw new Error('Подтвердите правила и политику конфиденциальности');
+  if(vin&&vin.length!==17)throw new Error('VIN должен содержать 17 символов');
+  return {action:krugEditingId?'edit':undefined,name,year,price,km,description:carDescription.value.trim(),phone,type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData,thumbnail:krugThumbnailData,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin};
+};
+const krugNextStepBeforeNumbers=nextStep;nextStep=function(n){
+  try{if(n===2){if(carName.value.trim().length<2)throw new Error('Укажите марку и модель');let y=krugNumber(carYear.value),p=krugNumber(carPrice.value);if(!y||y<1950||y>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');if(!p||p<1000)throw new Error('Укажите корректную цену')}if(n===3&&!String(carKm.value).trim())throw new Error('Укажите пробег, для нового автомобиля введите 0');return krugNextStepBeforeNumbers(n)}catch(error){toast(error.message)}};
+</script>
 </body>
 </html>
