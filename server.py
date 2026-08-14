@@ -203,7 +203,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def do_GET(self):
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":11,"release":"v33","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":12,"release":"v34","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
         if path=="/api/cars":
             with connect() as db:
                 rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
@@ -333,6 +333,7 @@ class Handler(SimpleHTTPRequestHandler):
             report=re.fullmatch(r"/api/cars/(\d+)/report",path)
             if report:
                 cid=int(report.group(1)); reason=str(data.get("reason") or "other")[:40]; details=str(data.get("details") or "").strip()[:500]
+                review_owner=None
                 if not rate_allowed((uid,"report"),15,3600): return self.send_json({"error":"Слишком много жалоб. Попробуйте позже"},429)
                 allowed={"fraud","wrong_info","sold","duplicate","other"}
                 if reason not in allowed: return self.send_json({"error":"Выберите причину жалобы"},400)
@@ -344,7 +345,11 @@ class Handler(SimpleHTTPRequestHandler):
                     except Exception:
                         return self.send_json({"error":"Вы уже отправляли жалобу"},409)
                     count=db.execute("SELECT COUNT(*) AS count FROM reports WHERE car_id=? AND status='new'",(cid,)).fetchone(); total=count["count"] if DATABASE_URL else count[0]
-                    if total>=3: db.execute("UPDATE cars SET status='review',updated_at=? WHERE id=? AND status='active'",(now,cid))
+                    if total>=3:
+                        moved=db.execute("UPDATE cars SET status='review',updated_at=? WHERE id=? AND status='active'",(now,cid))
+                        if moved.rowcount: review_owner=car["owner_id"] if DATABASE_URL else car[0]
+                if review_owner:
+                    threading.Thread(target=notify_exchange_user,args=(review_owner,"⚠️ Объявление временно отправлено на проверку после нескольких жалоб. Оно скрыто из каталога, но доступно в разделе «Мои объявления»."),daemon=True).start()
                 return self.send_json({"ok":True,"under_review":total>=3},201)
             if path=="/api/exchanges":
                 target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None

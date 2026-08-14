@@ -524,5 +524,21 @@ const krugEditBeforeDealSwitches=editCar;editCar=async function(id){await krugEd
 const krugOpenBeforeDealSwitches=openCarV3;openCarV3=async function(...args){await krugOpenBeforeDealSwitches(...args);let d=krugOpenedDetail;if(d?.accept_exchange)detailType.textContent=d.urgent?'Срочно · обмен':'Обмен возможен'};
 setMode=function(el,m){document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));el.classList.add('active');mode=m;if(m==='Обмен'){go('catalog');render(cars.filter(c=>c.accept_exchange||c.type==='Обмен'),'catalogCards')}};
 </script>
+<script>
+// KRUG v34: draft also remembers urgent-sale and exchange preferences.
+const krugDraftSnapshotBeforeDeals=krugDraftSnapshot;
+krugDraftSnapshot=function(){return {...krugDraftSnapshotBeforeDeals(),urgent:!!krugUrgentSwitch?.classList.contains('on'),accept_exchange:!!krugExchangeSwitch?.classList.contains('on')}};
+function restoreKrugDraftDealSwitches(){
+  if(krugEditingId)return;
+  try{
+    let draft=JSON.parse(localStorage.getItem(KRUG_DRAFT_KEY)||'null');
+    if(!draft)return;
+    if(typeof draft.urgent==='boolean')krugUrgentSwitch?.classList.toggle('on',draft.urgent);
+    if(typeof draft.accept_exchange==='boolean')krugExchangeSwitch?.classList.toggle('on',draft.accept_exchange);
+  }catch(_){localStorage.removeItem(KRUG_DRAFT_KEY)}
+}
+[krugUrgentSwitch,krugExchangeSwitch].filter(Boolean).forEach(button=>button.addEventListener('click',()=>setTimeout(saveKrugDraft)));
+restoreKrugDraftDealSwitches();
+</script>
 </body>
 </html>
