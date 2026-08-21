@@ -598,7 +598,7 @@ function paintLegalOperator(){let name=document.getElementById('legalOperatorNam
 const openLegalBeforeSecurity=openLegal;openLegal=function(kind){openLegalBeforeSecurity(kind);paintLegalOperator()};
 async function acceptKrugPrivacy(){if(!privacyPolicyChoice.checked||!privacyRulesChoice.checked){privacyGateStatus.textContent='Нужно отдельно отметить оба пункта.';return}let legal=await loadKrugLegalInfo();if(!legal.ready){privacyGateStatus.textContent='Владелец ещё не завершил обязательную юридическую настройку.';return}privacyAcceptButton.classList.add('busy');try{let u=krugTgUser||{first_name:'Пользователь',username:''};await krugJson('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||'',privacy_consent:true,policy_version:KRUG_POLICY_VERSION,rules_accepted:true,rules_version:KRUG_POLICY_VERSION})});localStorage.setItem('krug_privacy_version',KRUG_POLICY_VERSION);localStorage.setItem('krug_rules_version',KRUG_POLICY_VERSION);krugPrivacyReady=true;listingPrivacyInput.checked=true;privacyGate.classList.remove('open');await krugLoadProfile();toast('Настройки конфиденциальности сохранены')}catch(error){privacyGateStatus.textContent=error.message}finally{privacyAcceptButton.classList.remove('busy')}}
 privacyAcceptButton.onclick=acceptKrugPrivacy;privacyBrowseButton.onclick=()=>privacyGate.classList.remove('open');
-async function startKrugPrivacy(){if(location.protocol==='file:')return;await loadKrugLegalInfo();if(krugPrivacyReady){try{let u=krugTgUser||{first_name:'Пользователь',username:''};await krugJson('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||'',privacy_consent:true,policy_version:KRUG_POLICY_VERSION,rules_accepted:true,rules_version:KRUG_POLICY_VERSION})});return}catch(_){krugPrivacyReady=false;localStorage.removeItem('krug_privacy_version');localStorage.removeItem('krug_rules_version')}}privacyGate.classList.add('open')}
+async function startKrugPrivacy(){if(location.protocol==='file:')return;let legal=await loadKrugLegalInfo();if(!legal.ready){privacyGate.classList.remove('open');krugShowConnection('Каталог доступен. Публикация и личные функции временно отключены до завершения юридической настройки.');return}if(!krugInitData){privacyGate.classList.remove('open');return krugShowConnection('Откройте КРУГ кнопкой внутри Telegram для входа в профиль.')}if(krugPrivacyReady){try{let u=krugTgUser||{first_name:'Пользователь',username:''};await krugJson('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||'',privacy_consent:true,policy_version:KRUG_POLICY_VERSION,rules_accepted:true,rules_version:KRUG_POLICY_VERSION})});return}catch(_){krugPrivacyReady=false;localStorage.removeItem('krug_privacy_version');localStorage.removeItem('krug_rules_version')}}privacyGate.classList.add('open')}
 startKrugPrivacy();
 
 /* KRUG source block 43 */
@@ -680,8 +680,9 @@ function krugPublishIdentity(data){
 }
 krugLoadProfile=async function(){
   try{
-    let d=await krugJson('/api/me'),p=document.querySelector('.profile-card');if(!p)return;
-    let telegramName=[krugTgUser?.first_name,krugTgUser?.last_name].filter(Boolean).join(' ').trim(),storedName=String(d.user?.first_name||'').trim(),name=telegramName||storedName||'Пользователь КРУГ';
+    let p=document.querySelector('.profile-card');if(!p)return;
+    let telegramName=[krugTgUser?.first_name,krugTgUser?.last_name].filter(Boolean).join(' ').trim(),initialName=telegramName||'Пользователь КРУГ';p.querySelector('h2').textContent=initialName;p.querySelector('.avatar').textContent=initialName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
+    let d=await krugJson('/api/me'),storedName=String(d.user?.first_name||'').trim(),name=telegramName||storedName||initialName;
     p.querySelector('h2').textContent=name;p.querySelector('.avatar').textContent=name.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
     p.querySelector('p').textContent=d.user?.role==='dealer'?`Дилер · ${d.user.company||'Компания'} · Екатеринбург`:'Частный продавец · Екатеринбург';
     let stats=p.querySelectorAll('.stat b');if(stats[0])stats[0].textContent=Number(d.listings)||0;if(stats[1])stats[1].textContent=Number(d.favourites)||0;if(stats[2])stats[2].textContent=Number(d.views)||0;
@@ -705,6 +706,9 @@ publish=async function(){
   finally{clearTimeout(timer);button.classList.remove('busy');button.textContent=defaultLabel}
 };
 krugLoadProfile();
+
+const krugLegalSetupBanner=document.createElement('div');krugLegalSetupBanner.className='legal-setup-banner';krugLegalSetupBanner.innerHTML='<b>Каталог работает в режиме просмотра</b><span>Личные функции откроются после завершения настройки оператора и российского хранения данных.</span>';document.querySelector('#home .hero')?.after(krugLegalSetupBanner);
+loadKrugLegalInfo().then(info=>krugLegalSetupBanner.classList.toggle('show',!info.ready));
 
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
