@@ -5,26 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111310">
   <title>КРУГ — автомобили Екатеринбурга</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
-    *{box-sizing:border-box} :root{--ink:#111310;--panel:#f2f1eb;--muted:#777a71;--line:#d7d7cf;--lime:#c8ff39;--orange:#ff643d;--white:#fff;--shadow:0 18px 50px rgba(22,24,19,.12)}
-    body{margin:0;background:#d9d9d2;color:var(--ink);font-family:Manrope,system-ui,sans-serif;display:flex;justify-content:center}
-    button,input,select,textarea{font:inherit}.app{width:min(100%,480px);min-height:100dvh;background:#f7f7f2;position:relative;padding-bottom:92px;overflow:hidden}.screen{display:none}.screen.active{display:block}
-    .top{padding:18px 20px 12px;display:flex;align-items:center;justify-content:space-between}.brand{font-weight:800;font-size:22px;letter-spacing:-1px}.brand i{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--lime);margin-left:3px}.city,.icon-btn{border:1px solid var(--line);background:var(--white);border-radius:999px;padding:9px 12px;font-size:12px;font-weight:700}.icon-btn{width:40px;height:40px;padding:0;font-size:18px}
-    .hero{margin:0 12px;height:318px;border-radius:28px;overflow:hidden;position:relative;background:#222}.hero img{width:100%;height:100%;object-fit:cover}.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,.74))}.hero-copy{position:absolute;z-index:2;left:20px;right:20px;bottom:18px;color:white}.eyebrow{display:inline-flex;gap:7px;align-items:center;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px}.dot{width:7px;height:7px;border-radius:50%;background:var(--lime)}h1{font-size:35px;line-height:1.03;letter-spacing:-1.8px;margin:10px 0 15px;max-width:340px}.hero-actions{display:flex;gap:8px}.btn{border:0;border-radius:15px;padding:14px 17px;font-weight:800;cursor:pointer}.btn.lime{background:var(--lime);color:var(--ink)}.btn.ghost{background:rgba(255,255,255,.16);color:white;backdrop-filter:blur(12px)}
-    .section{padding:25px 16px 0}.section-head{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px}.section h2{font-size:24px;letter-spacing:-1px;margin:0}.link{border:0;background:transparent;text-decoration:underline;font-size:12px;font-weight:700}.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.mode{border:1px solid var(--line);background:white;border-radius:16px;padding:13px 7px;font-size:12px;font-weight:800}.mode.active{background:var(--ink);color:white;border-color:var(--ink)}
-    .price-row{display:flex;gap:8px;overflow:auto;padding:2px 16px 6px;scrollbar-width:none}.chip{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:10px 13px;font-size:12px;font-weight:700}.chip.active{background:var(--lime);border-color:var(--lime)}
-    .cards{display:grid;gap:14px}.car{background:white;border:1px solid #e5e5df;border-radius:23px;overflow:hidden;box-shadow:0 8px 30px rgba(25,25,20,.05);cursor:pointer}.car-media{height:190px;position:relative;background:#ddd}.car-media img{width:100%;height:100%;object-fit:cover}.badge{position:absolute;left:12px;top:12px;border-radius:999px;padding:7px 10px;background:var(--lime);font-size:10px;font-weight:800;text-transform:uppercase}.badge.urgent{background:var(--orange);color:white}.heart{position:absolute;right:12px;top:12px;border:0;width:38px;height:38px;border-radius:50%;font-size:18px;background:rgba(255,255,255,.9)}.heart.saved{background:var(--ink);color:var(--lime)}.car-body{padding:15px}.car-top{display:flex;justify-content:space-between;gap:10px}.car h3{font-size:18px;margin:0 0 4px}.price{font-weight:800;font-size:18px}.meta{font-size:12px;color:var(--muted)}.tags{display:flex;gap:6px;margin-top:13px;flex-wrap:wrap}.tag{background:#f2f2ed;border-radius:8px;padding:7px 9px;font-size:10px;font-weight:700}
-    .urgent-banner{background:var(--ink);color:white;border-radius:24px;padding:20px;margin:0 16px}.urgent-banner h2{font-size:26px;margin:6px 0}.urgent-banner p{font-size:12px;color:#b9bbb2;line-height:1.6}.urgent-banner .btn{width:100%;margin-top:10px}.urgent-banner.subscribed .btn{background:white}.pulse{display:inline-block;width:8px;height:8px;background:var(--orange);border-radius:50%;box-shadow:0 0 0 6px rgba(255,100,61,.18)}
-    .search-panel{display:grid;grid-template-columns:1fr auto;gap:9px;margin:0 16px 4px}.search-panel input,.search-panel select{border:1px solid #deded7;background:#fff;border-radius:15px;padding:13px 14px;font:inherit;color:var(--ink);min-width:0}.search-panel input:focus,.search-panel select:focus{outline:2px solid var(--lime);border-color:var(--ink)}
-    .page-head{padding:22px 18px 14px}.page-head h1{margin:8px 0;color:var(--ink);font-size:32px}.page-head p{font-size:13px;color:var(--muted);margin:0}.urgent-cover{margin:0 12px 18px;background:var(--orange);color:white;padding:23px;border-radius:26px}.urgent-cover h1{margin:6px 0 10px}.urgent-cover p{margin:0 0 17px;font-size:13px;line-height:1.5}.urgency-count{display:flex;gap:8px}.count{background:rgba(255,255,255,.15);border-radius:12px;padding:10px 12px;font-size:11px}.count b{display:block;font-size:18px}
-    .form-progress{display:flex;gap:6px;padding:0 18px 18px}.form-progress i{height:5px;flex:1;background:#ddd;border-radius:9px}.form-progress i.on{background:var(--lime)}.step{display:none;padding:0 16px}.step.active{display:block}.panel{background:white;border:1px solid #e1e1da;border-radius:24px;padding:18px;margin-bottom:13px}.panel h3{margin:0 0 15px;font-size:17px}.field{margin-bottom:14px}.field label{font-size:11px;font-weight:800;display:block;margin-bottom:7px;color:#62645d}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);background:#f6f6f1;border-radius:13px;padding:14px;outline:none}.field textarea{min-height:95px;resize:vertical}.type-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.type-card{border:1px solid var(--line);background:#f6f6f1;border-radius:15px;padding:15px 8px;text-align:center;font-weight:800;font-size:12px}.type-card.active{background:var(--ink);color:white}.upload{border:1px dashed #96988f;border-radius:16px;text-align:center;padding:30px 15px;background:#fafaf7}.next{width:100%;margin-top:8px;background:var(--ink);color:white}.back{width:100%;margin-top:8px;background:transparent;border:1px solid var(--line)}.toggle{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid #eee}.switch{width:46px;height:27px;background:#ccc;border-radius:50px;padding:3px}.switch i{display:block;width:21px;height:21px;border-radius:50%;background:white;transition:.2s}.switch.on{background:var(--lime)}.switch.on i{transform:translateX(19px)}
-    .profile-card{margin:0 16px;background:var(--ink);color:white;border-radius:27px;padding:22px}.avatar{width:55px;height:55px;background:var(--lime);color:var(--ink);border-radius:18px;display:grid;place-items:center;font-size:21px;font-weight:800}.profile-card h2{margin:14px 0 3px}.profile-card p{color:#aeb0a8;font-size:12px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:18px}.stat{background:#242721;border-radius:14px;padding:12px 8px;font-size:10px}.stat b{display:block;font-size:18px;color:var(--lime)}.menu-list{margin-top:14px}.menu-item{width:100%;border:0;background:white;border-bottom:1px solid #eee;padding:17px 3px;text-align:left;display:flex;justify-content:space-between;font-weight:700}
-    .nav{position:fixed;bottom:0;width:min(100%,480px);z-index:20;background:rgba(247,247,242,.92);backdrop-filter:blur(18px);border-top:1px solid #dfdfd8;padding:9px 9px calc(9px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,1fr)}.nav button{border:0;background:transparent;color:#888a82;font-size:10px;font-weight:700;padding:4px}.nav span{display:block;font-size:21px;margin-bottom:2px}.nav button.active{color:var(--ink)}.nav button.active span{color:#82a800}.toast{position:fixed;z-index:50;bottom:105px;left:50%;transform:translate(-50%,20px);background:var(--ink);color:white;padding:12px 16px;border-radius:14px;font-size:12px;opacity:0;pointer-events:none;transition:.25s;white-space:nowrap}.toast.show{opacity:1;transform:translate(-50%,0)}
-    .modal{display:none;position:fixed;z-index:40;inset:0;background:rgba(15,16,13,.6);align-items:flex-end;justify-content:center}.modal.open{display:flex}.sheet{width:min(100%,480px);max-height:90dvh;overflow:auto;background:#f7f7f2;border-radius:28px 28px 0 0;padding:12px 16px 32px}.grab{width:45px;height:4px;background:#ccc;border-radius:9px;margin:0 auto 18px}.detail-photo{height:260px;border-radius:20px;overflow:hidden}.detail-photo img{width:100%;height:100%;object-fit:cover}.detail-title{display:flex;justify-content:space-between;align-items:start;margin:18px 0}.detail-title h2{font-size:24px;margin:0}.detail-specs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.spec{background:white;border-radius:14px;padding:12px;font-size:10px}.spec b{display:block;font-size:14px;margin-top:3px}.sheet .btn{width:100%;margin-top:16px}
-    @media(min-width:700px){body{padding:28px 0}.app{border-radius:34px;min-height:900px;box-shadow:var(--shadow)}.nav{border-radius:0 0 34px 34px}}
-    .upload img{width:100%;max-height:220px;object-fit:cover;border-radius:12px;margin-top:12px}.manage-actions{display:flex;gap:8px;margin-top:12px}.manage-actions .btn{flex:1;padding:10px;font-size:11px}.photo-previews,.detail-thumbs{display:flex;gap:8px;overflow:auto;margin-top:10px}.photo-previews img,.detail-thumbs img{width:66px;height:54px;object-fit:cover;border-radius:10px;border:2px solid transparent;flex:0 0 auto}.detail-thumbs img.active{border-color:var(--lime)}
-  </style>
+
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <main class="app">
@@ -53,682 +35,68 @@
 <div class="toast" id="toast">Готово</div>
 <div class="modal" id="modal" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="grab"></div><div class="detail-photo"><img id="detailImg" alt="Автомобиль"></div><div class="detail-title"><div><h2 id="detailName"></h2><div class="meta" id="detailSeller">Екатеринбург · сегодня</div></div><div class="price" id="detailPrice"></div></div><div class="detail-specs"><div class="spec">Год<b id="detailYear">—</b></div><div class="spec">Пробег<b id="detailKm">—</b></div><div class="spec">Сделка<b id="detailType">—</b></div></div><div class="panel" id="detailDescription" style="margin:0 0 14px;padding:14px;line-height:1.5">Описание не указано</div><button class="btn lime" id="sellerContact" onclick="contactSeller()">Связаться с продавцом</button><button class="btn back" onclick="closeModal()">Закрыть</button></div></div>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script>
-const hero='/krug-hero.png';
-let cars=[
- {name:'Toyota RAV4',price:2890000,year:2021,km:'54 000 км',type:'Продажа',urgent:false,pos:'70% 50%'},
- {name:'Kia K5',price:2470000,year:2020,km:'72 000 км',type:'Обмен',urgent:false,pos:'18% 50%'},
- {name:'Lada Granta',price:690000,year:2019,km:'91 000 км',type:'Срочно',urgent:true,pos:'49% 50%'},
- {name:'Hyundai Solaris',price:1450000,year:2018,km:'86 000 км',type:'Срочно',urgent:true,pos:'48% 50%'},
- {name:'Ford Focus',price:290000,year:2007,km:'181 000 км',type:'Обмен',urgent:false,pos:'23% 50%'},
- {name:'ВАЗ 2114',price:95000,year:2008,km:'210 000 км',type:'Срочно',urgent:true,pos:'48% 50%'}
-];
-let mode='Все';
-const rub=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
-function card(c){return `<article class="car" onclick="openCar('${c.name}',${c.price},'${c.pos}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart" onclick="save(event,this)">♡</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">Проверен VIN</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-function render(list,target){document.getElementById(target).innerHTML=list.map(card).join('')||'<div class="panel"><h3>Здесь пока пусто</h3><p class="meta">Попробуйте другой диапазон цены.</p></div>'}
-function renderAll(){render(cars.slice(0,3),'homeCards');render(cars,'catalogCards');render(cars.filter(c=>c.urgent),'urgentCards')}
-renderAll();
-async function loadCars(){if(location.protocol==='file:')return;try{let r=await fetch('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll()}catch(e){toast('Сервер недоступен — показаны демо-данные')}}
-loadCars();
-function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.go===id));scrollTo(0,0)}
-document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.go));
-function setMode(el,m){document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));el.classList.add('active');mode=m;if(m==='Обмен'){go('catalog');render(cars.filter(c=>c.type==='Обмен'),'catalogCards')}}
-document.querySelectorAll('#prices .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#prices .chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');let r=b.dataset.range, list=cars;if(r!=='all'){if(r==='300+')list=cars.filter(c=>c.price>=300000);else{let[a,z]=r.split('-').map(x=>+x*10000);list=cars.filter(c=>c.price>=a&&c.price<=z)}}render(list,'catalogCards')});
-function save(e,b){e.stopPropagation();b.classList.toggle('saved');b.textContent=b.classList.contains('saved')?'♥':'♡';toast(b.classList.contains('saved')?'Добавлено в избранное':'Удалено из избранного')}
-async function subscribe(b){if(location.protocol!=='file:')await fetch('/api/subscriptions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:window.Telegram?.WebApp?.initDataUnsafe?.user?.id||'local-user'})});b.textContent='✓ Вы подписаны';b.closest('.urgent-banner')?.classList.add('subscribed');toast('Уведомления о срочных авто включены')}
-function nextStep(n){document.querySelectorAll('.step').forEach(s=>s.classList.toggle('active',+s.dataset.step===n));document.querySelectorAll('.form-progress i').forEach((x,i)=>x.classList.toggle('on',i<n));document.getElementById('stepText').textContent=`Шаг ${n} из 3 · ${['Тип сделки','Автомобиль','Публикация'][n-1]}`;scrollTo(0,0)}
-document.querySelectorAll('.type-card').forEach(b=>b.onclick=()=>{document.querySelectorAll('.type-card').forEach(x=>x.classList.remove('active'));b.classList.add('active')});
-async function publish(){let active=document.querySelector('.type-card.active').textContent;let data={name:document.getElementById('carName').value,year:+document.getElementById('carYear').value,price:+document.getElementById('carPrice').value,km:(document.getElementById('carKm').value||'0')+' км',description:document.getElementById('carDescription').value,phone:document.getElementById('carPhone').value,type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.includes('срочно')};if(!data.name||!data.year||!data.price){toast('Заполните марку, год и цену');nextStep(1);return}if(location.protocol!=='file:'){let r=await fetch('/api/cars',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok){toast('Не удалось сохранить');return}await loadCars()}else{cars.unshift({...data,pos:'50% 50%'});renderAll()}toast('Объявление опубликовано');setTimeout(()=>go('catalog'),900)}
-function toast(t){let x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2200)}
-function openCar(n,p,pos){document.getElementById('detailName').textContent=n;document.getElementById('detailPrice').textContent=rub(p);document.getElementById('detailImg').src=hero;document.getElementById('detailImg').style.objectPosition=pos;document.getElementById('modal').classList.add('open')}
-function closeModal(){document.getElementById('modal').classList.remove('open')}
-window.Telegram?.WebApp?.ready();window.Telegram?.WebApp?.expand();
-</script>
-<script>
-// KRUG v2: persistent user session, favourites and validated listings.
-const krugTgUser=window.Telegram?.WebApp?.initDataUnsafe?.user;
-const krugUserId=String(krugTgUser?.id||localStorage.getItem('krug_user')||'local-user');
-localStorage.setItem('krug_user',krugUserId);
-const krugInitData=window.Telegram?.WebApp?.initData||'';
-const krugApi=(url,options={})=>fetch(url,{...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}});
-function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-async function krugLoadCars(){if(location.protocol==='file:')return;try{let r=await krugApi('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll();await krugLoadProfile()}catch(e){toast('Не удалось обновить объявления')}}
-async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');krugLoadProfile()}
-let krugOpenedCar=0;
-function openCarV2(id,n,p,pos){krugOpenedCar=id;openCar(n,p,pos)}
-async function subscribe(b){if(location.protocol!=='file:')await krugApi('/api/subscriptions',{method:'POST',body:'{}'});b.textContent='✓ Вы подписаны';b.closest('.urgent-banner')?.classList.add('subscribed');toast('Подписка на срочные авто включена')}
-async function publish(){let active=document.querySelector('.type-card.active').textContent;let data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно')};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok){toast(d.error||'Проверьте данные');return}toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');await krugLoadCars();setTimeout(()=>go('catalog'),700)}
-async function krugLoadProfile(){let u=krugTgUser||{first_name:'Пользователь',username:''};await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});let r=await krugApi('/api/me'),d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.offers}
-krugLoadCars();
-</script>
-<script>
-let krugImageData='';
-carImage?.addEventListener('change',async()=>{let f=carImage.files[0];if(!f)return;if(f.size>8_000_000){toast('Фото должно быть меньше 8 МБ');carImage.value='';return}let img=new Image(),url=URL.createObjectURL(f);img.onload=()=>{let max=1200,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);krugImageData=canvas.toDataURL('image/jpeg',.78);carPreview.src=krugImageData;carPreview.hidden=false;URL.revokeObjectURL(url)};img.src=url});
-function card(c){let safe=String(c.name).replaceAll("'","&#39;"),picture=c.image||hero;return `<article class="car" onclick="openCarV3(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}','${picture}')"><div class="car-media"><img src="${picture}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-function openCarV3(id,n,p,pos,picture){krugOpenedCar=id;openCar(n,p,pos);detailImg.src=picture;let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}}
-async function publish(){let active=document.querySelector('.type-card.active').textContent,data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),image:krugImageData};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok)return toast(d.error||'Проверьте данные');toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');krugImageData='';carPreview.hidden=true;await krugLoadCars();setTimeout(()=>go('catalog'),700)}
-async function showMyCars(){let r=await krugApi('/api/my-cars'),list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}<div class="manage-actions"><button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять с публикации':'Опубликовать'}</button><button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}
-async function manageCar(id,action){let r=await krugApi(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action})});if(r.ok){toast('Статус обновлён');showMyCars()}}
-async function deleteCar(id){if(!confirm('Удалить объявление?'))return;let r=await krugApi(`/api/cars/${id}`,{method:'DELETE'});if(r.ok){toast('Объявление удалено');showMyCars();krugLoadProfile()}}
-async function offerExchange(){let r=await krugApi('/api/my-cars'),mine=(await r.json()).filter(x=>x.status==='active');if(!mine.length){closeModal();go('create');return toast('Сначала разместите свой автомобиль')}let message=prompt(`Предложить ${mine[0].name} в обмен. Добавьте сообщение:`,`Готов обсудить обмен`);if(message===null)return;let res=await krugApi('/api/exchanges',{method:'POST',body:JSON.stringify({target_car_id:krugOpenedCar,offered_car_id:mine[0].id,message})});toast(res.ok?'Предложение обмена отправлено':'Не удалось отправить')}
-let profileButtons=document.querySelectorAll('#profile .menu-item');if(profileButtons[0])profileButtons[0].onclick=showMyCars;if(profileButtons[1])profileButtons[1].onclick=async()=>{let r=await krugApi('/api/exchanges'),x=await r.json();toast(x.length?`Предложений обмена: ${x.length}`:'Предложений пока нет')};
-renderAll();
-</script>
-<script>
-// KRUG v4: real counters, persistent subscription controls and complete profile shortcuts.
-let krugSubscribed=false;
-function paintSubscription(){
-  document.querySelectorAll('[onclick="subscribe(this)"]').forEach(b=>{
-    b.textContent=krugSubscribed?'✓ Вы подписаны':'🔔 Подписаться';
-    b.classList.toggle('subscribed',krugSubscribed);
-  });
-  document.getElementById('homeSub')?.classList.toggle('subscribed',krugSubscribed);
-}
-async function loadSubscription(){
-  if(location.protocol==='file:')return;
-  let r=await krugApi('/api/subscriptions');
-  if(r.ok){krugSubscribed=!!(await r.json()).urgent;paintSubscription()}
-}
-async function subscribe(){
-  if(location.protocol==='file:')return toast('Подписка работает внутри Telegram');
-  let r=await krugApi('/api/subscriptions',{method:krugSubscribed?'DELETE':'POST',body:krugSubscribed?undefined:'{}'});
-  if(!r.ok)return toast('Не удалось изменить подписку');
-  krugSubscribed=!krugSubscribed;paintSubscription();await krugLoadProfile();
-  toast(krugSubscribed?'Уведомления о срочных авто включены':'Уведомления отключены');
-}
-async function loadMarketplaceStats(){
-  if(location.protocol==='file:')return;
-  let r=await krugApi('/api/stats');if(!r.ok)return;let d=await r.json();
-  let eyebrow=document.querySelector('#catalog .eyebrow');if(eyebrow)eyebrow.innerHTML=`<span class="dot"></span> ${d.active} объявлений`;
-  let urgentCount=document.querySelector('#urgent .count b');if(urgentCount)urgentCount.textContent=d.urgent;
-}
-async function krugLoadProfile(){
-  let u=krugTgUser||{first_name:'Пользователь',username:''};
-  await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});
-  let r=await krugApi('/api/me');if(!r.ok)return;let d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;
-  p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');
-  let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.subscriptions;
-  if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${d.offers} ›</span>`;
-}
-function showFavourites(){go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';render(cars.filter(c=>c.favourite),'catalogCards')}
-if(profileButtons[2])profileButtons[2].onclick=showFavourites;
-if(profileButtons[3])profileButtons[3].onclick=()=>go('urgent');
-loadSubscription();loadMarketplaceStats();krugLoadProfile();
-</script>
-<script>
-// KRUG v6: complete listing details and real seller contact action.
-let krugOpenedDetail=null;
-async function openCarV3(id,n,p,pos,picture){
-  krugOpenedCar=id;openCar(n,p,pos);detailImg.src=picture;
-  let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}
-  if(!id||location.protocol==='file:')return;
-  let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');
-  let d=krugOpenedDetail=await r.json();detailName.textContent=d.name;detailPrice.textContent=rub(d.price);detailYear.textContent=d.year;detailKm.textContent=d.km;detailType.textContent=d.type;detailDescription.textContent=d.description||'Описание не указано';
-  detailSeller.textContent=d.is_owner?'Это ваше объявление':`${d.seller_name||'Продавец'} · Екатеринбург`;
-  sellerContact.textContent=d.is_owner?'Управлять объявлением':(d.seller_username?'Написать в Telegram':d.phone?'Позвонить продавцу':'Запросить контакт');
-}
-function contactSeller(){
-  let d=krugOpenedDetail;if(!d)return toast('Контакт загружается');
-  if(d.is_owner){closeModal();return showMyCars()}
-  if(d.seller_username){let url=`https://t.me/${d.seller_username.replace(/^@/,'')}`;if(window.Telegram?.WebApp?.openTelegramLink)Telegram.WebApp.openTelegramLink(url);else location.href=url;return}
-  if(d.phone){location.href=`tel:${d.phone.replace(/[^+\d]/g,'')}`;return}
-  toast('Продавец пока не указал контакт');
-}
-</script>
-<script>
-// KRUG v7: exchange inbox with accept/reject actions and outgoing statuses.
-const exchangeStatus={new:'Новое',accepted:'Принято',rejected:'Отклонено'};
-const safeText=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function showExchanges(){
-  let r=await krugApi('/api/exchanges');if(!r.ok)return toast('Не удалось загрузить обмены');let list=await r.json();
-  go('catalog');document.querySelector('#catalog .page-head h1').textContent='Предложения обмена';
-  document.getElementById('catalogCards').innerHTML=list.map(x=>{
-    let incoming=String(x.target_owner_id)===krugUserId, actions=incoming&&x.status==='new'?`<div class="manage-actions"><button class="btn lime" onclick="answerExchange(${x.id},'accept')">Принять</button><button class="btn back" onclick="answerExchange(${x.id},'reject')">Отклонить</button></div>`:'';
-    return `<div class="panel"><div class="eyebrow"><span class="dot"></span>${incoming?'Входящее':'Исходящее'} · ${exchangeStatus[x.status]||x.status}</div><h3>${safeText(x.offered_name||'Автомобиль')} ↔ ${safeText(x.target_name)}</h3><p class="meta">${safeText(x.sender_name||'Пользователь')}</p>${x.message?`<p>${safeText(x.message)}</p>`:''}${actions}</div>`
-  }).join('')||'<div class="panel"><h3>Предложений пока нет</h3><p class="meta">Они появятся здесь после отправки или получения обмена.</p></div>';
-}
-async function answerExchange(id,action){let r=await krugApi(`/api/exchanges/${id}`,{method:'PUT',body:JSON.stringify({action})}),d=await r.json();if(!r.ok)return toast(d.error||'Не удалось обновить предложение');toast(action==='accept'?'Обмен принят':'Предложение отклонено');await showExchanges();await krugLoadProfile()}
-async function offerExchange(){
-  let r=await krugApi('/api/my-cars'),mine=(await r.json()).filter(x=>x.status==='active');if(!mine.length){closeModal();go('create');return toast('Сначала разместите свой автомобиль')}
-  let message=prompt(`Предложить ${mine[0].name} в обмен. Добавьте сообщение:`,`Готов обсудить обмен`);if(message===null)return;
-  let res=await krugApi('/api/exchanges',{method:'POST',body:JSON.stringify({target_car_id:krugOpenedCar,offered_car_id:mine[0].id,message})}),d=await res.json();toast(res.ok?'Предложение обмена отправлено':d.error||'Не удалось отправить');if(res.ok)closeModal();
-}
-if(profileButtons[1])profileButtons[1].onclick=showExchanges;
-</script>
-<script>
-// KRUG v8: correct price ranges, live search and catalogue sorting.
-let catalogRange='all';
-function applyCatalog(){
-  let q=(catalogSearch?.value||'').trim().toLowerCase(),list=cars.filter(c=>String(c.name).toLowerCase().includes(q));
-  if(catalogRange!=='all'){
-    if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);
-    else{let [a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}
-  }
-  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));
-  render(list,'catalogCards');
-}
-document.querySelectorAll('#prices .chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('#prices .chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');catalogRange=b.dataset.range;applyCatalog()});
-catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);
-document.querySelector('#home .icon-btn').onclick=()=>{go('catalog');setTimeout(()=>catalogSearch.focus(),50)};
-function renderAll(){render(cars.slice(0,3),'homeCards');applyCatalog();render(cars.filter(c=>c.urgent),'urgentCards')}
-</script>
-<script>
-// KRUG v9: dealer accounts and verified company labels.
-function card(c){let safe=String(c.name).replaceAll("'","&#39;"),picture=c.image||hero,dealer=c.seller_role==='dealer';return `<article class="car" onclick="openCarV3(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}','${picture}')"><div class="car-media"><img src="${picture}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:`<span class="tag">Частник</span>`}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-async function showDealerSettings(){
-  let r=await krugApi('/api/me'),d=await r.json(),u=d.user||{};go('catalog');document.querySelector('#catalog .page-head h1').textContent='Профиль продавца';
-  document.getElementById('catalogCards').innerHTML=`<div class="panel"><div class="eyebrow"><span class="dot"></span>для бизнеса</div><h3>Дилерский профиль</h3><p class="meta">Добавляет отметку дилера и название компании ко всем вашим объявлениям.</p><div class="field"><label>Название компании</label><input id="dealerCompany" maxlength="100" placeholder="Например, Урал Авто" value="${safeText(u.company||'')}"></div><button class="btn lime" onclick="saveDealer('dealer')">${u.role==='dealer'?'Сохранить изменения':'Стать дилером'}</button>${u.role==='dealer'?'<button class="btn back" onclick="saveDealer(\'private\')">Перейти в профиль частника</button>':''}</div>`;
-}
-async function saveDealer(role){let company=document.getElementById('dealerCompany')?.value.trim()||'';let r=await krugApi('/api/profile',{method:'PUT',body:JSON.stringify({role,company})}),d=await r.json();if(!r.ok)return toast(d.error||'Не удалось сохранить профиль');toast(role==='dealer'?'Профиль дилера сохранён':'Включён профиль частника');await krugLoadCars();await krugLoadProfile();go('profile')}
-async function krugLoadProfile(){let u=krugTgUser||{first_name:'Пользователь',username:''};await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});let r=await krugApi('/api/me');if(!r.ok)return;let d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');p.querySelector('p').textContent=d.user?.role==='dealer'?`Дилер · ${d.user.company||'Компания'} · Екатеринбург`:'Частный продавец · Екатеринбург';let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.subscriptions;if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${d.offers} ›</span>`}
-if(profileButtons[4])profileButtons[4].onclick=showDealerSettings;
-renderAll();krugLoadProfile();
-</script>
-<script>
-// KRUG v10: up to eight compressed photos and a listing gallery.
-let krugImagesData=[];carImage.multiple=true;
-const photoPreviews=document.createElement('div');photoPreviews.className='photo-previews';carImage.before(photoPreviews);
-const detailThumbs=document.createElement('div');detailThumbs.className='detail-thumbs';document.querySelector('.detail-photo').after(detailThumbs);
-const compressCarPhoto=file=>new Promise((resolve,reject)=>{let img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let max=1000,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);let data=canvas.toDataURL('image/jpeg',.7);URL.revokeObjectURL(url);resolve(data)};img.onerror=reject;img.src=url});
-carImage.addEventListener('change',async()=>{let files=[...carImage.files].slice(0,8);if(files.some(f=>f.size>10_000_000))return toast('Каждое фото должно быть меньше 10 МБ');toast('Подготавливаем фотографии…');try{krugImagesData=await Promise.all(files.map(compressCarPhoto));krugImageData=krugImagesData[0]||'';carPreview.hidden=true;photoPreviews.innerHTML=krugImagesData.map((src,i)=>`<img src="${src}" alt="Фото ${i+1}">`).join('');toast(`Добавлено фото: ${krugImagesData.length} из 8`)}catch(e){toast('Не удалось обработать фотографию')}});
-async function publish(){let active=document.querySelector('.type-card.active').textContent,data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok)return toast(d.error||'Проверьте данные');toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');krugImageData='';krugImagesData=[];photoPreviews.innerHTML='';carPreview.hidden=true;await krugLoadCars();setTimeout(()=>go('catalog'),700)}
-async function openCarV3(id,n,p,pos,picture){krugOpenedCar=id;openCar(n,p,pos);detailImg.src=picture;detailThumbs.innerHTML='';let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}if(!id||location.protocol==='file:')return;let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');let d=krugOpenedDetail=await r.json(),pics=d.images?.length?d.images:[d.image||hero];detailImg.src=pics[0];detailThumbs.innerHTML=pics.map((src,i)=>`<img class="${i?'':'active'}" src="${src}" alt="Фото ${i+1}" onclick="selectCarPhoto(this)">`).join('');detailName.textContent=d.name;detailPrice.textContent=rub(d.price);detailYear.textContent=d.year;detailKm.textContent=d.km;detailType.textContent=d.type;detailDescription.textContent=d.description||'Описание не указано';detailSeller.textContent=d.is_owner?'Это ваше объявление':`${d.seller_company||d.seller_name||'Продавец'} · Екатеринбург`;sellerContact.textContent=d.is_owner?'Управлять объявлением':(d.seller_username?'Написать в Telegram':d.phone?'Позвонить продавцу':'Запросить контакт')}
-function selectCarPhoto(img){detailImg.src=img.src;detailThumbs.querySelectorAll('img').forEach(x=>x.classList.toggle('active',x===img))}
-</script>
-<script>
-// KRUG v11: edit existing listings without losing their identity or photos.
-let krugEditingId=0;
-async function showMyCars(){let r=await krugApi('/api/my-cars'),list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button><button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button><button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}
-async function editCar(id){let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');let d=await r.json();krugEditingId=id;carName.value=d.name;carYear.value=d.year;carPrice.value=d.price;carKm.value=String(d.km).replace(/\D/g,'');carDescription.value=d.description||'';carPhone.value=d.phone||'';krugImagesData=d.images||[];krugImageData=krugImagesData[0]||'';photoPreviews.innerHTML=krugImagesData.map((src,i)=>`<img src="${src}" alt="Фото ${i+1}">`).join('');document.querySelectorAll('.type-card').forEach(x=>x.classList.toggle('active',d.urgent?x.textContent.toLowerCase().includes('срочно'):d.type==='Обмен'?x.textContent.includes('Обмен'):x.textContent==='Продать'));document.querySelector('#create .page-head h1').textContent='Изменить объявление';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Сохранить изменения';go('create');nextStep(1)}
-async function publish(){let active=document.querySelector('.type-card.active').textContent,data={action:krugEditingId?'edit':undefined,name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let editing=krugEditingId,r=await krugApi(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok)return toast(d.error||'Проверьте данные');toast(editing?'Изменения сохранены':'Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');krugImageData='';krugImagesData=[];krugEditingId=0;photoPreviews.innerHTML='';carPreview.hidden=true;document.querySelector('#create .page-head h1').textContent='Разместить авто';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Опубликовать бесплатно';await krugLoadCars();setTimeout(()=>editing?showMyCars():go('catalog'),500)}
-if(profileButtons[0])profileButtons[0].onclick=showMyCars;
-</script>
-<script>
-// KRUG v12: user reports and automatic safety review.
-const reportButton=document.createElement('button');reportButton.className='btn back report-action';reportButton.textContent='⚑ Пожаловаться';reportButton.onclick=reportCar;document.querySelector('.sheet').insertBefore(reportButton,document.querySelector('.sheet .exchange-action')||document.querySelector('.sheet .btn.back'));
-async function reportCar(){if(!krugOpenedDetail||krugOpenedDetail.is_owner)return toast('Это ваше объявление');let choice=prompt('Причина жалобы:\n1 — подозрение на мошенничество\n2 — неверные данные\n3 — автомобиль продан\n4 — дубликат\n5 — другое','1');if(choice===null)return;let reasons={1:'fraud',2:'wrong_info',3:'sold',4:'duplicate',5:'other'},reason=reasons[choice];if(!reason)return toast('Введите число от 1 до 5');let details=prompt('Коротко опишите проблему (необязательно)','')||'';let r=await krugApi(`/api/cars/${krugOpenedCar}/report`,{method:'POST',body:JSON.stringify({reason,details})}),d=await r.json();if(!r.ok)return toast(d.error||'Не удалось отправить жалобу');reportButton.disabled=true;reportButton.textContent='✓ Жалоба отправлена';toast(d.under_review?'Объявление отправлено на проверку':'Спасибо, мы проверим объявление')}
-const openCarSafe=openCarV3;openCarV3=async function(...args){await openCarSafe(...args);reportButton.hidden=!!krugOpenedDetail?.is_owner;reportButton.disabled=false;reportButton.textContent='⚑ Пожаловаться'};
-async function showMyCars(){let r=await krugApi('/api/my-cars'),list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб. Мы проверим его.</div></div>':''}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button>`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}
-if(profileButtons[0])profileButtons[0].onclick=showMyCars;
-</script>
-<script>
-// KRUG v13: safe listing rendering; user text is never interpreted as HTML.
-function openCarById(id){let c=cars.find(x=>Number(x.id)===Number(id));if(c)openCarV3(c.id,c.name,c.price,c.pos||'50% 50%',c.image||hero)}
-function card(c){let name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer';return `<article class="car" onclick="openCarById(${Number(c.id)||0})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${Number(c.id)||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-renderAll();
-</script>
-<script>
-// KRUG v14: favourites are loaded from the database, not stale page memory.
-async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');let c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!d.favourite;b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');await krugLoadProfile()}
-async function showFavourites(){let r=await krugApi('/api/favourites');if(!r.ok)return toast('Не удалось загрузить избранное');let list=await r.json();go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';document.getElementById('catalogCards').innerHTML=list.map(card).join('')||'<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}
-if(profileButtons[2])profileButtons[2].onclick=showFavourites;
-</script>
-<style>
-.btn.busy,.heart.busy{opacity:.55;pointer-events:none}.connection-note{position:fixed;left:14px;right:14px;top:12px;z-index:1000;padding:11px 14px;border-radius:16px;background:#fff4d8;color:#493915;font-size:13px;font-weight:700;box-shadow:0 8px 28px #0002}.connection-note[hidden]{display:none}
-</style>
-<script>
-// KRUG v16: consistent errors, guarded actions and Telegram launch diagnostics.
-const krugConnectionNote=document.createElement('div');krugConnectionNote.className='connection-note';krugConnectionNote.hidden=true;document.body.append(krugConnectionNote);
-function krugShowConnection(message){krugConnectionNote.textContent=message;krugConnectionNote.hidden=false;setTimeout(()=>krugConnectionNote.hidden=true,5000)}
-async function krugJson(url,options={}){
-  try{
-    let response=await krugApi(url,options),data={};
-    try{data=await response.json()}catch(_){data={}}
-    if(!response.ok){let message=data.error||(response.status===401?'Откройте КРУГ кнопкой внутри Telegram':'Сервер временно недоступен');let error=new Error(message);error.status=response.status;throw error}
-    return data;
-  }catch(error){
-    if(error.status===401)krugShowConnection(error.message);
-    throw error;
-  }
-}
-if(location.protocol!=='file:'&&!krugInitData)krugShowConnection('Просмотр доступен. Для избранного и публикации откройте КРУГ внутри Telegram.');
-window.addEventListener('offline',()=>krugShowConnection('Нет подключения к интернету. Данные сохранятся после восстановления связи.'));
-window.addEventListener('online',()=>{toast('Соединение восстановлено');krugLoadCars()});
-async function saveV2(e,b,id){
-  e.stopPropagation();if(!id||b.classList.contains('busy'))return;b.classList.add('busy');
-  try{let d=await krugJson(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!d.favourite;b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');await krugLoadProfile()}
-  catch(error){toast(error.message)}finally{b.classList.remove('busy')}
-}
-async function showFavourites(){try{let list=await krugJson('/api/favourites');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Избранное';document.getElementById('catalogCards').innerHTML=list.map(card).join('')||'<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}catch(error){toast(error.message)}}
-async function subscribe(b){
-  let button=b?.tagName?b:document.querySelector('#urgent [onclick="subscribe(this)"]');if(button?.classList.contains('busy'))return;button?.classList.add('busy');
-  try{await krugJson('/api/subscriptions',{method:krugSubscribed?'DELETE':'POST',body:krugSubscribed?undefined:'{}'});krugSubscribed=!krugSubscribed;paintSubscription();await krugLoadProfile();toast(krugSubscribed?'Уведомления о срочных авто включены':'Уведомления отключены')}
-  catch(error){toast(error.message)}finally{button?.classList.remove('busy')}
-}
-if(profileButtons[2])profileButtons[2].onclick=showFavourites;
-</script>
-<script>
-// KRUG v17: reliable listing creation, editing and owner controls.
-function krugListingData(){
-  let active=document.querySelector('.type-card.active')?.textContent||'',year=Number(carYear.value),price=Number(carPrice.value),km=Number(carKm.value||0),phone=carPhone.value.trim();
-  if(carName.value.trim().length<2)throw new Error('Укажите марку и модель автомобиля');
-  if(!Number.isInteger(year)||year<1950||year>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');
-  if(!Number.isFinite(price)||price<1000)throw new Error('Укажите корректную цену');
-  if(!Number.isFinite(km)||km<0)throw new Error('Проверьте пробег');
-  if(phone&&phone.replace(/\D/g,'').length<10)throw new Error('Проверьте номер телефона');
-  return {action:krugEditingId?'edit':undefined,name:carName.value.trim(),year,price,km,description:carDescription.value.trim(),phone,type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData};
-}
-function krugResetListingForm(){document.querySelectorAll('#create input:not([type=file]),#create textarea').forEach(x=>x.value='');carImage.value='';krugImageData='';krugImagesData=[];krugEditingId=0;photoPreviews.innerHTML='';carPreview.hidden=true;document.querySelector('#create .page-head h1').textContent='Разместить авто';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Опубликовать бесплатно';nextStep(1)}
-async function publish(){
-  let button=document.querySelector('#create .step[data-step="3"] .btn.lime');if(button.classList.contains('busy'))return;let data;
-  try{data=krugListingData()}catch(error){toast(error.message);return}
-  if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let editing=krugEditingId,original=button.textContent;button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
-  try{await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data)});toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();await krugLoadCars();setTimeout(()=>editing?showMyCars():go('catalog'),450)}
-  catch(error){toast(error.message)}finally{button.classList.remove('busy');if(krugEditingId)button.textContent=original}
-}
-async function showMyCars(){
-  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button>`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}}
-async function manageCar(id,action){try{await krugJson(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='archive'?'Объявление снято':'Объявление опубликовано');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
-async function deleteCar(id){if(!confirm('Удалить объявление без возможности восстановления?'))return;try{await krugJson(`/api/cars/${id}`,{method:'DELETE'});toast('Объявление удалено');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
-async function editCar(id){try{let d=await krugJson(`/api/cars/${id}`);krugEditingId=id;carName.value=d.name;carYear.value=d.year;carPrice.value=d.price;carKm.value=String(d.km).replace(/\D/g,'');carDescription.value=d.description||'';carPhone.value=d.phone||'';krugImagesData=d.images||[];krugImageData=krugImagesData[0]||'';photoPreviews.innerHTML=krugImagesData.map((src,i)=>`<img src="${src}" alt="Фото ${i+1}">`).join('');document.querySelectorAll('.type-card').forEach(x=>x.classList.toggle('active',d.urgent?x.textContent.toLowerCase().includes('срочно'):d.type==='Обмен'?x.textContent.includes('Обмен'):x.textContent==='Продать'));document.querySelector('#create .page-head h1').textContent='Изменить объявление';document.querySelector('#create .step[data-step="3"] .btn.lime').textContent='Сохранить изменения';go('create');nextStep(1)}catch(error){toast(error.message)}}
-if(profileButtons[0])profileButtons[0].onclick=showMyCars;
-</script>
-<style>
-.legal-consent{display:flex;gap:10px;align-items:flex-start;margin:15px 0;padding:13px;border-radius:15px;background:#f4f5f1;font-size:13px;line-height:1.4}.legal-consent input{width:20px;height:20px;flex:0 0 auto}.legal-link{border:0;background:none;color:#087b69;text-decoration:underline;padding:0;font:inherit}.legal-modal{position:fixed;inset:0;z-index:1200;background:#0009;display:none;align-items:flex-end}.legal-modal.open{display:flex}.legal-sheet{width:100%;max-height:88vh;overflow:auto;background:#fff;border-radius:26px 26px 0 0;padding:22px 20px 40px}.legal-sheet h2{margin:0 0 12px}.legal-sheet h3{margin:20px 0 6px}.legal-sheet p{line-height:1.55;color:#444}.legal-sheet .btn{position:sticky;bottom:0;width:100%}
-</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <div class="legal-modal" id="legalModal" onclick="if(event.target===this)closeLegal()"><div class="legal-sheet"><h2 id="legalTitle"></h2><div id="legalBody"></div><button class="btn lime" onclick="closeLegal()">Понятно</button></div></div>
-<script>
-// KRUG v18: marketplace rules, privacy notice and explicit seller consent.
-const krugLegal={
-  rules:`<p>КРУГ — площадка объявлений. Мы не являемся продавцом, дилером, платёжным сервисом или гарантом сделки.</p><h3>Правила размещения</h3><p>Указывайте достоверные характеристики, цену, фотографии и контакты. Запрещены чужие фотографии, дубликаты, скрытые платежи, мошенничество и объявления о несуществующих автомобилях.</p><h3>Безопасная сделка</h3><p>Проверяйте документы, VIN и автомобиль до оплаты. Не переводите предоплату незнакомым людям. Встречайтесь в безопасном месте и оформляйте сделку официально.</p><h3>Модерация</h3><p>Объявление может быть скрыто после жалоб или при нарушении правил. Пользователь отвечает за опубликованные сведения.</p>`,
-  privacy:`<p>Для работы КРУГ получает от Telegram идентификатор, имя и username пользователя. Также сохраняются объявления, фотографии, избранное, подписки, предложения обмена и жалобы.</p><h3>Для чего нужны данные</h3><p>Чтобы показывать ваши объявления, связывать участников сделки, сохранять настройки и обеспечивать безопасность площадки.</p><h3>Кому видны данные</h3><p>Имя, username и указанный вами телефон могут быть показаны заинтересованным пользователям. Не публикуйте лишние персональные сведения.</p><h3>Хранение</h3><p>Данные размещаются на используемых КРУГ облачных сервисах. Для удаления объявления используйте раздел «Мои объявления». Запрос на удаление аккаунта будет добавлен в поддержку.</p>`
-};
-function openLegal(kind){legalTitle.textContent=kind==='privacy'?'Политика конфиденциальности':'Правила КРУГ';legalBody.innerHTML=krugLegal[kind];legalModal.classList.add('open')}
-function closeLegal(){legalModal.classList.remove('open')}
-const krugPublishPanel=document.querySelector('#create .step[data-step="3"] .panel');
-const krugConsent=document.createElement('label');krugConsent.className='legal-consent';krugConsent.innerHTML=`<input id="legalAccepted" type="checkbox"><span>Я подтверждаю достоверность объявления и принимаю <button type="button" class="legal-link" onclick="event.preventDefault();openLegal('rules')">правила КРУГ</button> и <button type="button" class="legal-link" onclick="event.preventDefault();openLegal('privacy')">политику конфиденциальности</button>.</span>`;krugPublishPanel.append(krugConsent);
-legalAccepted.checked=localStorage.getItem('krug_legal_accepted')==='1';legalAccepted.addEventListener('change',()=>localStorage.setItem('krug_legal_accepted',legalAccepted.checked?'1':'0'));
-const krugListingDataBeforeLegal=krugListingData;krugListingData=function(){if(!legalAccepted.checked)throw new Error('Подтвердите правила и политику конфиденциальности');return krugListingDataBeforeLegal()};
-</script>
-<script>
-// KRUG v19: personal data export and protected account deletion.
-const krugProfileMenu=document.querySelector('#profile .menu-list');
-const krugDataButton=document.createElement('button');krugDataButton.className='menu-item';krugDataButton.innerHTML='Скачать мои данные <span>›</span>';krugDataButton.onclick=exportMyData;krugProfileMenu.append(krugDataButton);
-const krugDeleteButton=document.createElement('button');krugDeleteButton.className='menu-item';krugDeleteButton.style.color='#b42318';krugDeleteButton.innerHTML='Удалить аккаунт <span>›</span>';krugDeleteButton.onclick=deleteMyAccount;krugProfileMenu.append(krugDeleteButton);
-async function exportMyData(){
-  try{let data=await krugJson('/api/export'),blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`krug-data-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Копия данных подготовлена')}
-  catch(error){toast(error.message)}
-}
-async function deleteMyAccount(){
-  let answer=prompt('Будут удалены аккаунт, объявления, избранное, подписки и предложения обмена. Для подтверждения напишите УДАЛИТЬ','');if(answer!=='УДАЛИТЬ')return answer===null?undefined:toast('Удаление отменено');
-  try{await krugJson('/api/account',{method:'DELETE'});localStorage.removeItem('krug_user');localStorage.removeItem('krug_legal_accepted');cars=[];renderAll();go('home');toast('Ваш аккаунт и данные удалены')}
-  catch(error){toast(error.message)}
-}
-</script>
-<script>
-// KRUG v20: essential automotive specifications.
-const krugSpecsHost=document.querySelector('#create .step[data-step="2"] .panel');
-const krugSpecs=document.createElement('div');krugSpecs.innerHTML=`<div class="field"><label>Коробка передач</label><select id="carTransmission"><option value="">Выберите</option><option>Автомат</option><option>Механика</option><option>Робот</option><option>Вариатор</option></select></div><div class="field"><label>Тип кузова</label><select id="carBodyType"><option value="">Выберите</option><option>Седан</option><option>Хэтчбек</option><option>Универсал</option><option>Кроссовер</option><option>Внедорожник</option><option>Минивэн</option><option>Купе</option><option>Пикап</option></select></div><div class="field"><label>Привод</label><select id="carDrive"><option value="">Выберите</option><option>Передний</option><option>Задний</option><option>Полный</option></select></div><div class="field"><label>VIN <small>(необязательно)</small></label><input id="carVin" maxlength="17" autocomplete="off" placeholder="17 символов" style="text-transform:uppercase"></div>`;krugSpecsHost.append(krugSpecs);
-const krugListingDataBeforeSpecs=krugListingData;krugListingData=function(){let data=krugListingDataBeforeSpecs(),vin=carVin.value.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'');if(vin&&vin.length!==17)throw new Error('VIN должен содержать 17 символов');return {...data,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin}};
-carVin.addEventListener('input',()=>carVin.value=carVin.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17));
-const krugEditBeforeSpecs=editCar;editCar=async function(id){await krugEditBeforeSpecs(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||''}catch(_){}}
-const krugOpenBeforeSpecs=openCarV3;openCarV3=async function(...args){await krugOpenBeforeSpecs(...args);let d=krugOpenedDetail;if(!d)return;let specs=[d.body_type,d.transmission,d.drive,d.vin?`VIN: ${d.vin}`:''].filter(Boolean);if(specs.length)detailDescription.textContent=`${specs.join(' · ')}\n\n${d.description||'Описание не указано'}`};
-</script>
-<style>
-.auto-filters{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:10px 0}.auto-filters select,.auto-filters button{min-width:0;border:1px solid #dde2dc;background:#fff;border-radius:14px;padding:11px 10px;font:inherit;color:#222}.auto-filters .filter-reset{color:#087b69;font-weight:700}.filter-result{font-size:13px;color:#69706b;margin:3px 2px 12px}
-</style>
-<script>
-// KRUG v21: filters by vehicle specifications.
-const krugFilterBox=document.createElement('div');krugFilterBox.className='auto-filters';krugFilterBox.innerHTML=`<select id="filterTransmission" aria-label="Коробка"><option value="">Любая коробка</option><option>Автомат</option><option>Механика</option><option>Робот</option><option>Вариатор</option></select><select id="filterBody" aria-label="Кузов"><option value="">Любой кузов</option><option>Седан</option><option>Хэтчбек</option><option>Универсал</option><option>Кроссовер</option><option>Внедорожник</option><option>Минивэн</option><option>Купе</option><option>Пикап</option></select><select id="filterDrive" aria-label="Привод"><option value="">Любой привод</option><option>Передний</option><option>Задний</option><option>Полный</option></select><button class="filter-reset" type="button">Сбросить фильтры</button>`;
-const krugFilterResult=document.createElement('div');krugFilterResult.className='filter-result';document.querySelector('#catalog .search-panel').after(krugFilterBox,krugFilterResult);
-const filterTransmission=document.getElementById('filterTransmission'),filterBody=document.getElementById('filterBody'),filterDrive=document.getElementById('filterDrive');
-function applyCatalog(){
-  let q=(catalogSearch?.value||'').trim().toLowerCase(),list=cars.filter(c=>String(c.name).toLowerCase().includes(q));
-  if(catalogRange!=='all'){if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);else{let[a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}}
-  if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
-  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;
-}
-[filterTransmission,filterBody,filterDrive].forEach(x=>x.addEventListener('change',applyCatalog));
-krugFilterBox.querySelector('.filter-reset').onclick=()=>{catalogSearch.value='';catalogRange='all';document.querySelectorAll('#prices .chip').forEach(x=>x.classList.toggle('active',x.dataset.range==='all'));filterTransmission.value='';filterBody.value='';filterDrive.value='';catalogSort.value='new';applyCatalog()};
-applyCatalog();
-</script>
-<style>
-.draft-note{display:none;margin:0 0 12px;padding:12px 14px;border-radius:15px;background:#e9f8ef;color:#155b36;font-size:13px}.draft-note.show{display:flex;align-items:center;justify-content:space-between;gap:10px}.draft-note button{border:0;background:none;color:#a22;font-weight:700}
-</style>
-<script>
-// KRUG v22: automatic listing drafts survive accidental closes and reconnects.
-const KRUG_DRAFT_KEY='krug_listing_draft_v1';
-const krugDraftNote=document.createElement('div');krugDraftNote.className='draft-note';krugDraftNote.innerHTML='<span>Черновик автоматически сохраняется</span><button type="button">Очистить</button>';document.querySelector('#create .page-head').after(krugDraftNote);
-function krugDraftSnapshot(){return {name:carName.value,year:carYear.value,price:carPrice.value,km:carKm.value,description:carDescription.value,phone:carPhone.value,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin:carVin.value,type:[...document.querySelectorAll('.type-card')].findIndex(x=>x.classList.contains('active')),saved_at:new Date().toISOString()}}
-function saveKrugDraft(){if(krugEditingId)return;let draft=krugDraftSnapshot(),hasData=Object.entries(draft).some(([k,v])=>!['saved_at','type'].includes(k)&&String(v).trim());if(hasData){localStorage.setItem(KRUG_DRAFT_KEY,JSON.stringify(draft));krugDraftNote.classList.add('show')}else{localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show')}}
-function restoreKrugDraft(){try{let d=JSON.parse(localStorage.getItem(KRUG_DRAFT_KEY)||'null');if(!d)return;carName.value=d.name||'';carYear.value=d.year||'';carPrice.value=d.price||'';carKm.value=d.km||'';carDescription.value=d.description||'';carPhone.value=d.phone||'';carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||'';let types=document.querySelectorAll('.type-card');types.forEach((x,i)=>x.classList.toggle('active',i===Number(d.type||0)));krugDraftNote.classList.add('show');toast('Черновик объявления восстановлен')}catch(_){localStorage.removeItem(KRUG_DRAFT_KEY)}}
-document.querySelectorAll('#create input:not([type=file]),#create textarea,#create select').forEach(x=>{x.addEventListener('input',saveKrugDraft);x.addEventListener('change',saveKrugDraft)});document.querySelectorAll('.type-card').forEach(x=>x.addEventListener('click',()=>setTimeout(saveKrugDraft)));
-krugDraftNote.querySelector('button').onclick=()=>{localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show');document.querySelectorAll('#create input:not([type=file]),#create textarea').forEach(x=>x.value='');[carTransmission,carBodyType,carDrive].forEach(x=>x.value='');toast('Черновик очищен')};
-const krugResetBeforeDraft=krugResetListingForm;krugResetListingForm=function(){localStorage.removeItem(KRUG_DRAFT_KEY);krugDraftNote.classList.remove('show');return krugResetBeforeDraft()};
-restoreKrugDraft();
-</script>
-<style>
-.listing-insights{display:flex;gap:8px;margin:8px 0 14px}.listing-insights span{flex:1;padding:9px 10px;border-radius:12px;background:#edf1eb;color:#465048;font-size:12px;font-weight:700}
-</style>
-<script>
-// KRUG v23: daily unique listing views and seller interest counters.
-const krugMyCarsBeforeInsights=showMyCars;showMyCars=async function(){
-  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}<div class="listing-insights"><span>👁 Просмотры: ${Number(c.views)||0}</span><span>♥ В избранном: ${Number(c.favourites_count)||0}</span></div>${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions"><button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button>`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}};
-if(profileButtons[0])profileButtons[0].onclick=showMyCars;
-</script>
-<style>
-.share-action{width:100%;margin-top:10px;background:#e8f1ff;color:#164d87}.share-action.busy{opacity:.55}
-</style>
-<script>
-// KRUG v24: shareable listing links and direct card opening.
-const krugShareButton=document.createElement('button');krugShareButton.className='btn share-action';krugShareButton.textContent='↗ Поделиться объявлением';krugShareButton.onclick=shareOpenedCar;document.querySelector('.sheet').insertBefore(krugShareButton,document.querySelector('.sheet .btn.back'));
-function krugListingUrl(id){let url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('car',String(id));return url.toString()}
-async function shareOpenedCar(){
-  let d=krugOpenedDetail;if(!d?.id)return toast('Сначала откройте объявление');let url=krugListingUrl(d.id),text=`${d.name} — ${rub(d.price)} · Екатеринбург`;
-  try{if(navigator.share){await navigator.share({title:d.name,text,url});return}let telegramUrl=`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;if(window.Telegram?.WebApp?.openTelegramLink)Telegram.WebApp.openTelegramLink(telegramUrl);else{await navigator.clipboard.writeText(`${text}\n${url}`);toast('Ссылка скопирована')}}catch(error){if(error.name!=='AbortError')toast('Не удалось поделиться')}
-}
-async function openLinkedCar(){let id=Number(new URLSearchParams(location.search).get('car'));if(!id)return;try{if(location.protocol!=='file:')await krugLoadCars();let c=cars.find(x=>Number(x.id)===id);if(!c)return toast('Объявление больше недоступно');go('catalog');await openCarV3(c.id,c.name,c.price,c.pos||'50% 50%',c.image||hero)}catch(_){toast('Не удалось открыть объявление')}}
-setTimeout(openLinkedCar,700);
-</script>
-<style>
-.sold-label{margin:8px 0 12px;padding:10px 12px;border-radius:13px;background:#e8f1ff;color:#164d87;font-size:13px;font-weight:800}.sold-button{background:#17211c!important;color:#fff!important}
-</style>
-<script>
-// KRUG v25: sold status keeps seller history while removing stale listings.
-async function showMyCars(){
-  try{let list=await krugJson('/api/my-cars');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Мои объявления';document.getElementById('catalogCards').innerHTML=list.map(c=>`${card(c)}${c.status==='sold'?'<div class="sold-label">✓ Автомобиль продан</div>':`<div class="listing-insights"><span>👁 Просмотры: ${Number(c.views)||0}</span><span>♥ В избранном: ${Number(c.favourites_count)||0}</span></div>`}${c.status==='review'?'<div class="panel" style="margin-top:8px;background:#fff4d8"><b>На проверке</b><div class="meta">Объявление временно скрыто после жалоб.</div></div>':''}<div class="manage-actions">${c.status==='sold'?`<button class="btn back" onclick="manageCar(${c.id},'activate')">Вернуть в продажу</button>`:`<button class="btn lime" onclick="editCar(${c.id})">Изменить</button>${c.status==='review'?'':`<button class="btn back" onclick="manageCar(${c.id},'${c.status==='active'?'archive':'activate'}')">${c.status==='active'?'Снять':'Опубликовать'}</button><button class="btn sold-button" onclick="markCarSold(${c.id})">Продано</button>`}`}<button class="btn" style="background:#ffe3dc" onclick="deleteCar(${c.id})">Удалить</button></div>`).join('')||'<div class="panel"><h3>Объявлений пока нет</h3></div>'}catch(error){toast(error.message)}}
-async function markCarSold(id){if(!confirm('Отметить автомобиль как проданный? Он исчезнет из каталога.'))return;try{await krugJson(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action:'sold'})});toast('Поздравляем с продажей!');await showMyCars();await krugLoadCars()}catch(error){toast(error.message)}}
-if(profileButtons[0])profileButtons[0].onclick=showMyCars;
-</script>
-<script>
-// KRUG v26: lightweight catalogue thumbnails; full photos load only on detail.
-let krugThumbnailData='';
-const makeKrugThumbnail=file=>new Promise((resolve,reject)=>{let img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);URL.revokeObjectURL(url);resolve(canvas.toDataURL('image/jpeg',.62))};img.onerror=reject;img.src=url});
-carImage.addEventListener('change',async()=>{let first=carImage.files?.[0];if(!first){krugThumbnailData='';return}try{krugThumbnailData=await makeKrugThumbnail(first)}catch(_){krugThumbnailData=''}});
-const krugListingDataBeforeThumb=krugListingData;krugListingData=function(){return {...krugListingDataBeforeThumb(),thumbnail:krugThumbnailData}};
-const krugEditBeforeThumb=editCar;editCar=async function(id){await krugEditBeforeThumb(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);krugThumbnailData=d.thumbnail||d.image||''}catch(_){}};
-const krugResetBeforeThumb=krugResetListingForm;krugResetListingForm=function(){krugThumbnailData='';return krugResetBeforeThumb()};
-</script>
-<style>
-.old-price{display:inline-block;margin-top:5px;color:#8a918c;text-decoration:line-through;font-size:14px}.price-drop{display:inline-block;margin:6px 0 0 8px;padding:4px 8px;border-radius:9px;background:#e2f7e8;color:#17653a;font-size:12px;font-weight:800}
-</style>
-<script>
-// KRUG v27: price history and visible price drops.
-const krugOpenBeforePrice=openCarV3;openCarV3=async function(...args){await krugOpenBeforePrice(...args);let d=krugOpenedDetail;if(!d)return;let old=document.querySelector('.sheet .price-history-ui');old?.remove();if(d.previous_price&&d.previous_price>d.price){let box=document.createElement('div');box.className='price-history-ui';let drop=d.previous_price-d.price;box.innerHTML=`<span class="old-price">${rub(d.previous_price)}</span><span class="price-drop">Цена снижена на ${rub(drop)}</span>`;detailPrice.after(box)}};
-</script>
-<style>
-.detail-favourite{width:100%;margin-top:10px;border:1px solid #d8ded9;background:#fff;color:#17211c}.detail-favourite.saved{border-color:#ff6b57;background:#fff0ed;color:#a72d1f}.detail-favourite.busy{opacity:.55;pointer-events:none}
-</style>
-<script>
-// KRUG v28: consistent favourites in catalogue, saved list and car details.
-function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite;return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.accept_exchange||c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-function paintFavourite(id,state){
-  let c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!state;
-  document.querySelectorAll(`[data-favourite-id="${Number(id)}"]`).forEach(b=>{b.classList.toggle('saved',!!state);b.textContent=state?(b.classList.contains('heart')?'♥':'♥ В избранном'):(b.classList.contains('heart')?'♡':'♡ Добавить в избранное');b.setAttribute('aria-label',state?'Удалить из избранного':'Добавить в избранное')});
-}
-async function toggleKrugFavourite(id,button){
-  if(!id||button?.classList.contains('busy'))return;button?.classList.add('busy');
-  try{let d=await krugJson(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'});paintFavourite(id,d.favourite);toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');if(!d.favourite&&document.querySelector('#catalog .page-head h1')?.textContent==='Избранное'){document.querySelector(`#catalogCards .car[data-car-id="${Number(id)}"]`)?.remove();if(!document.querySelector('#catalogCards .car'))document.getElementById('catalogCards').innerHTML='<div class="panel"><h3>В избранном пока пусто</h3><p class="meta">Нажмите на сердечко у автомобиля, чтобы сохранить его здесь.</p></div>'}await krugLoadProfile();return d}
-  catch(error){toast(error.message)}finally{button?.classList.remove('busy')}
-}
-async function saveV2(e,b,id){e?.stopPropagation?.();await toggleKrugFavourite(id,b)}
-const krugDetailFavourite=document.createElement('button');krugDetailFavourite.className='btn detail-favourite';krugDetailFavourite.onclick=()=>toggleKrugFavourite(krugOpenedDetail?.id,krugDetailFavourite);document.querySelector('.sheet').insertBefore(krugDetailFavourite,krugShareButton);
-const krugOpenBeforeFavourite=openCarV3;openCarV3=async function(...args){await krugOpenBeforeFavourite(...args);let d=krugOpenedDetail;if(!d)return;krugDetailFavourite.dataset.favouriteId=String(d.id);paintFavourite(d.id,!!d.favourite)};
-</script>
-<style>
-.contact-hint{margin:8px 2px 0;color:#69706b;font-size:12px;line-height:1.4}.contact-hint.ok{color:#17653a}
-</style>
-<script>
-// KRUG v29: every published listing must have a usable seller contact.
-const krugContactHint=document.createElement('div');krugContactHint.className='contact-hint';carPhone.closest('.field').append(krugContactHint);
-function paintContactHint(){let username=krugTgUser?.username||'',hasPhone=carPhone.value.replace(/\D/g,'').length>=10;if(username){krugContactHint.className='contact-hint ok';krugContactHint.textContent=`Покупатели смогут написать вам в Telegram: @${username}`}else if(hasPhone){krugContactHint.className='contact-hint ok';krugContactHint.textContent='Телефон будет доступен покупателям в карточке автомобиля'}else{krugContactHint.className='contact-hint';krugContactHint.textContent='Укажите телефон — в вашем Telegram нет публичного username'}}
-carPhone.addEventListener('input',paintContactHint);paintContactHint();
-const krugListingDataBeforeContact=krugListingData;krugListingData=function(){let data=krugListingDataBeforeContact();if(!data.phone&&!krugTgUser?.username)throw new Error('Укажите телефон для связи с покупателем');return data};
-const krugOpenBeforeContact=openCarV3;openCarV3=async function(...args){await krugOpenBeforeContact(...args);let d=krugOpenedDetail;if(!d)return;sellerContact.hidden=!d.is_owner&&!d.seller_username&&!d.phone;if(sellerContact.hidden)toast('У продавца пока нет доступного контакта')};
-</script>
-<script>
-// KRUG v30: profile counters only include listings that are actually available.
-</script>
-<style>
-.number-hint{display:block;margin-top:6px;color:#777;font-size:11px}
-</style>
-<script>
-// KRUG v31: robust year, price and mileage entry with grouped-number support.
-const krugNumericFields=[carYear,carPrice,carKm];
-const krugOnlyDigits=value=>String(value??'').replace(/\D/g,'');
-const krugNumber=value=>Number(krugOnlyDigits(value)||0);
-krugNumericFields.forEach(field=>{field.type='text';field.inputMode='numeric';field.autocomplete='off';field.addEventListener('input',()=>{let digits=krugOnlyDigits(field.value);field.value=field===carYear?digits.slice(0,4):digits.slice(0,9)});field.addEventListener('blur',()=>{let n=krugNumber(field.value);if(n)field.value=field===carYear?String(n):new Intl.NumberFormat('ru-RU').format(n)});field.addEventListener('focus',()=>field.value=krugOnlyDigits(field.value))});
-carKm.insertAdjacentHTML('afterend','<small class="number-hint">Можно вводить с пробелами: например, 86 000</small>');
-carPrice.insertAdjacentHTML('afterend','<small class="number-hint">Можно вводить с пробелами: например, 1 850 000</small>');
-krugListingData=function(){
-  let active=document.querySelector('.type-card.active')?.textContent||'',name=carName.value.trim(),year=krugNumber(carYear.value),price=krugNumber(carPrice.value),kmText=String(carKm.value).trim(),km=krugNumber(kmText),phone=carPhone.value.trim(),vin=carVin.value.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'');
-  if(name.length<2)throw new Error('Укажите марку и модель автомобиля');
-  if(!year||year<1950||year>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');
-  if(!price||price<1000)throw new Error('Укажите корректную цену');
-  if(!kmText)throw new Error('Укажите пробег автомобиля, для нового автомобиля введите 0');
-  if(km<0||km>2000000)throw new Error('Проверьте пробег');
-  if(phone&&phone.replace(/\D/g,'').length<10)throw new Error('Проверьте номер телефона');
-  if(!phone&&!krugTgUser?.username)throw new Error('Укажите телефон для связи с покупателем');
-  if(!legalAccepted.checked)throw new Error('Подтвердите правила и политику конфиденциальности');
-  if(vin&&vin.length!==17)throw new Error('VIN должен содержать 17 символов');
-  return {action:krugEditingId?'edit':undefined,name,year,price,km,description:carDescription.value.trim(),phone,type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData,thumbnail:krugThumbnailData,transmission:carTransmission.value,body_type:carBodyType.value,drive:carDrive.value,vin};
-};
-const krugNextStepBeforeNumbers=nextStep;nextStep=function(n){
-  try{if(n===2){if(carName.value.trim().length<2)throw new Error('Укажите марку и модель');let y=krugNumber(carYear.value),p=krugNumber(carPrice.value);if(!y||y<1950||y>new Date().getFullYear()+1)throw new Error('Проверьте год выпуска');if(!p||p<1000)throw new Error('Укажите корректную цену')}if(n===3&&!String(carKm.value).trim())throw new Error('Укажите пробег, для нового автомобиля введите 0');return krugNextStepBeforeNumbers(n)}catch(error){toast(error.message)}};
-</script>
-<script>
-// KRUG v32: remove the obsolete gearbox field that was displayed but never saved.
-const krugLegacyGearbox=[...document.querySelectorAll('#create .step[data-step="2"] select')].find(field=>!field.id);
-krugLegacyGearbox?.closest('.field')?.remove();
-</script>
-<script>
-// KRUG v33: urgent sale and exchange switches now persist as real listing settings.
-const krugUrgentSwitch=[...document.querySelectorAll('#create .toggle')].find(row=>row.textContent.includes('Срочная продажа'))?.querySelector('.switch');
-const krugExchangeSwitch=[...document.querySelectorAll('#create .toggle')].find(row=>row.textContent.includes('Принимать обмен'))?.querySelector('.switch');
-function syncDealSwitches(){let selected=document.querySelector('.type-card.active')?.textContent||'';krugUrgentSwitch?.classList.toggle('on',selected.toLowerCase().includes('срочно'));krugExchangeSwitch?.classList.toggle('on',selected.includes('Обмен'))}
-document.querySelectorAll('.type-card').forEach(button=>button.addEventListener('click',()=>setTimeout(syncDealSwitches)));
-syncDealSwitches();
-const krugListingDataBeforeDealSwitches=krugListingData;krugListingData=function(){let data=krugListingDataBeforeDealSwitches(),urgent=!!krugUrgentSwitch?.classList.contains('on'),accept_exchange=!!krugExchangeSwitch?.classList.contains('on');return {...data,urgent,accept_exchange,type:accept_exchange?'Обмен':'Продажа'}};
-const krugEditBeforeDealSwitches=editCar;editCar=async function(id){await krugEditBeforeDealSwitches(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);krugUrgentSwitch?.classList.toggle('on',!!d.urgent);krugExchangeSwitch?.classList.toggle('on',!!d.accept_exchange||d.type==='Обмен')}catch(_){}};
-const krugOpenBeforeDealSwitches=openCarV3;openCarV3=async function(...args){await krugOpenBeforeDealSwitches(...args);let d=krugOpenedDetail;if(d?.accept_exchange)detailType.textContent=d.urgent?'Срочно · обмен':'Обмен возможен'};
-setMode=function(el,m){document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));el.classList.add('active');mode=m;if(m==='Обмен'){go('catalog');render(cars.filter(c=>c.accept_exchange||c.type==='Обмен'),'catalogCards')}};
-</script>
-<script>
-// KRUG v34: draft also remembers urgent-sale and exchange preferences.
-const krugDraftSnapshotBeforeDeals=krugDraftSnapshot;
-krugDraftSnapshot=function(){return {...krugDraftSnapshotBeforeDeals(),urgent:!!krugUrgentSwitch?.classList.contains('on'),accept_exchange:!!krugExchangeSwitch?.classList.contains('on')}};
-function restoreKrugDraftDealSwitches(){
-  if(krugEditingId)return;
-  try{
-    let draft=JSON.parse(localStorage.getItem(KRUG_DRAFT_KEY)||'null');
-    if(!draft)return;
-    if(typeof draft.urgent==='boolean')krugUrgentSwitch?.classList.toggle('on',draft.urgent);
-    if(typeof draft.accept_exchange==='boolean')krugExchangeSwitch?.classList.toggle('on',draft.accept_exchange);
-  }catch(_){localStorage.removeItem(KRUG_DRAFT_KEY)}
-}
-[krugUrgentSwitch,krugExchangeSwitch].filter(Boolean).forEach(button=>button.addEventListener('click',()=>setTimeout(saveKrugDraft)));
-restoreKrugDraftDealSwitches();
-</script>
-<style>
-.moderation-reason{display:inline-block;margin:8px 0;padding:5px 8px;border-radius:8px;background:#fff0e8;color:#9c351c;font-size:12px;font-weight:800}.admin-menu{display:none}.admin-menu.show{display:flex}
-</style>
-<script>
-// KRUG v35: owner-only moderation queue for reported listings.
-const krugAdminButton=document.createElement('button');krugAdminButton.className='menu-item admin-menu';krugAdminButton.innerHTML='Модерация жалоб <span>›</span>';document.querySelector('#profile .menu-list').append(krugAdminButton);
-const krugReportReasons={fraud:'Мошенничество',wrong_info:'Неверные данные',sold:'Уже продано',duplicate:'Дубликат',other:'Другая причина'};
-async function showModeration(){
-  try{let reports=await krugJson('/api/admin/reports');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Модерация';document.getElementById('catalogCards').innerHTML=reports.map(r=>`<div class="panel"><div class="eyebrow"><span class="dot"></span>жалоба №${Number(r.id)}</div><h3>${safeText(r.car_name)}</h3><span class="moderation-reason">${safeText(krugReportReasons[r.reason]||r.reason)}</span>${r.details?`<p>${safeText(r.details)}</p>`:''}<div class="meta">Отправитель: ${safeText(r.reporter_name||'Пользователь')}</div><div class="manage-actions"><button class="btn lime" onclick="moderateReport(${Number(r.id)},'approve')">Вернуть объявление</button><button class="btn sold-button" onclick="moderateReport(${Number(r.id)},'block')">Заблокировать</button></div></div>`).join('')||'<div class="panel"><h3>Новых жалоб нет</h3></div>'}catch(error){toast(error.message)}
-}
-async function moderateReport(id,action){try{await krugJson(`/api/admin/reports/${id}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='approve'?'Объявление возвращено':'Объявление заблокировано');await showModeration()}catch(error){toast(error.message)}}
-krugAdminButton.onclick=showModeration;
-const krugLoadProfileBeforeAdmin=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeAdmin();try{let d=await krugJson('/api/me');krugAdminButton.classList.toggle('show',!!d.admin)}catch(_){krugAdminButton.classList.remove('show')}};
-krugLoadProfile();
-</script>
-<style>
-/* KRUG v36: premium mobile polish, clear text entry and compact urgent hero. */
-#create input,#create textarea,#create select{background:#fff!important;color:#171a16!important;caret-color:#ff6848!important;border:1px solid #d8ddd5!important;-webkit-text-fill-color:#171a16!important;opacity:1!important}
-#create input:focus,#create textarea:focus,#create select:focus{outline:0!important;border-color:#9ebc34!important;box-shadow:0 0 0 4px rgba(180,218,56,.18)!important}
-#create input::placeholder,#create textarea::placeholder{color:#8b9189!important;-webkit-text-fill-color:#8b9189!important}
-.urgent-cover{position:relative;min-height:210px;margin:0 16px 14px;padding:17px 18px;border-radius:22px;overflow:hidden;background:linear-gradient(90deg,rgba(11,17,22,.96) 0%,rgba(11,17,22,.86) 43%,rgba(11,17,22,.18) 100%),url('/krug-urgent-v2.png') 65% center/cover no-repeat;box-shadow:0 16px 38px rgba(13,20,27,.2)}
-.urgent-cover h1{max-width:64%;margin:5px 0 7px;font-size:23px;line-height:1.05}.urgent-cover p{max-width:62%;margin:0 0 10px;font-size:11px;line-height:1.35;color:#d8ddd9}.urgent-cover .urgency-count{gap:5px}.urgent-cover .count{padding:6px 8px;border-radius:9px;font-size:9px;backdrop-filter:blur(8px)}.urgent-cover .count b{font-size:14px}.urgent-cover .btn{width:auto!important;margin-top:10px!important;padding:10px 14px;font-size:11px}
-.team-form{display:grid;gap:10px}.team-form input,.team-form select{width:100%;box-sizing:border-box;padding:13px;border:1px solid #d8ddd5;border-radius:13px;background:#fff;color:#171a16}.staff-role{display:inline-block;margin-top:9px;padding:5px 8px;border-radius:8px;background:#edf5d2;color:#425712;font-size:11px;font-weight:800}
-@media(max-width:390px){.urgent-cover{min-height:190px;padding:15px}.urgent-cover h1{font-size:20px}.urgent-cover p{max-width:67%}}
-</style>
-<script>
-// KRUG v36: administrators can manage staff; moderators only review reports.
-document.addEventListener('error',event=>{let image=event.target;if(image?.tagName==='IMG'&&!image.dataset.fallback){image.dataset.fallback='1';image.src='/krug-hero.png'}},true);
-const krugStaffButton=document.createElement('button');krugStaffButton.className='menu-item admin-menu';krugStaffButton.innerHTML='Администраторы и модераторы <span>›</span>';document.querySelector('#profile .menu-list').append(krugStaffButton);
-async function showStaff(){
-  try{let staff=await krugJson('/api/admin/staff');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Команда КРУГ';document.getElementById('catalogCards').innerHTML=`<div class="panel"><h3>Добавить сотрудника</h3><p class="meta">Человек должен хотя бы один раз открыть бота КРУГ.</p><div class="team-form"><input id="staffIdentifier" placeholder="Telegram ID или @username"><select id="staffRole"><option value="moderator">Модератор</option><option value="admin">Администратор</option></select><button class="btn lime" onclick="addStaff()">Добавить</button></div></div>`+staff.map(s=>`<div class="panel"><h3>${safeText(s.first_name||'Пользователь')}</h3><div class="meta">${s.username?'@'+safeText(s.username):'ID '+safeText(s.user_id)}</div><span class="staff-role">${s.role==='admin'?'Администратор':'Модератор'}</span><div class="manage-actions"><button class="btn back" onclick="removeStaff('${safeText(s.user_id)}')">Снять доступ</button></div></div>`).join('')}catch(error){toast(error.message)}
-}
-async function addStaff(){try{let identifier=document.getElementById('staffIdentifier').value.trim(),role=document.getElementById('staffRole').value;await krugJson('/api/admin/staff',{method:'POST',body:JSON.stringify({identifier,role})});toast('Доступ сотруднику сохранён');await showStaff()}catch(error){toast(error.message)}}
-async function removeStaff(id){if(!confirm('Снять доступ у сотрудника?'))return;try{await krugJson(`/api/admin/staff/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Доступ снят');await showStaff()}catch(error){toast(error.message)}}
-krugStaffButton.onclick=showStaff;
-const krugLoadProfileBeforeStaff=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeStaff();try{let d=await krugJson('/api/me'),role=d.staff_role||'';krugAdminButton.classList.toggle('show',!!role);krugStaffButton.classList.toggle('show',role==='owner'||role==='admin')}catch(_){krugAdminButton.classList.remove('show');krugStaffButton.classList.remove('show')}};
-krugLoadProfile();
-</script>
-<style>
-.catalog-more{display:none;width:calc(100% - 32px);margin:0 16px 22px}.catalog-more.show{display:block}.catalog-more.busy{opacity:.55;pointer-events:none}
-</style>
-<script>
-// KRUG v37: paginated catalogue keeps mobile rendering and database reads light.
-let krugCatalogOffset=0,krugCatalogHasMore=false,krugCatalogTotal=0;const KRUG_PAGE_SIZE=20;
-const krugMoreButton=document.createElement('button');krugMoreButton.className='btn back catalog-more';krugMoreButton.textContent='Показать ещё автомобили';document.querySelector('#catalog .section').after(krugMoreButton);
-function paintKrugMore(){let regular=document.querySelector('#catalog .page-head h1')?.textContent==='Автомобили';krugMoreButton.classList.toggle('show',regular&&krugCatalogHasMore);krugFilterResult.textContent=`Загружено ${cars.length} из ${krugCatalogTotal||cars.length}`}
-async function loadKrugCarPage(reset=false){
-  if(location.protocol==='file:'||krugMoreButton.classList.contains('busy'))return;
-  krugMoreButton.classList.add('busy');
-  try{let offset=reset?0:krugCatalogOffset,d=await krugJson(`/api/cars?paged=1&limit=${KRUG_PAGE_SIZE}&offset=${offset}`),known=new Set((reset?[]:cars).map(x=>Number(x.id)));cars=reset?d.items:[...cars,...d.items.filter(x=>!known.has(Number(x.id)))];krugCatalogOffset=offset+d.items.length;krugCatalogHasMore=!!d.has_more;krugCatalogTotal=Number(d.total)||cars.length;renderAll();paintKrugMore();await krugLoadProfile()}catch(error){toast(error.message)}finally{krugMoreButton.classList.remove('busy')}
-}
-krugMoreButton.onclick=()=>loadKrugCarPage(false);
-krugLoadCars=async function(){await loadKrugCarPage(true)};
-loadKrugCarPage(true);
-</script>
-<style>
-/* Public listing interest, intentionally quiet so price and model stay dominant. */
-.car-interest{display:flex;align-items:center;gap:5px;margin-top:10px;color:#737a72;font-size:11px;font-weight:700}
-.car-interest svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8}
-.detail-views{display:inline-flex;align-items:center;gap:6px;margin-top:5px;color:#737a72;font-size:12px;font-weight:750}
-</style>
-<script>
-// KRUG v38: daily unique public listing views.
-const krugEyeIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>`;
-const krugDetailViews=document.createElement('div');krugDetailViews.className='detail-views';detailSeller.after(krugDetailViews);
-function krugViewsLabel(value){let count=Math.max(0,Number(value)||0);return `${count} ${count%10===1&&count%100!==11?'просмотр':([2,3,4].includes(count%10)&&![12,13,14].includes(count%100)?'просмотра':'просмотров')}`}
-function paintCarViews(id,value){let count=Math.max(0,Number(value)||0);document.querySelectorAll(`[data-car-id="${Number(id)}"] .car-interest span`).forEach(x=>x.textContent=krugViewsLabel(count))}
-function card(c){let id=Number(c.id)||0,name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer',saved=!!c.favourite,views=Math.max(0,Number(c.views)||0);return `<article class="car" data-car-id="${id}" onclick="openCarById(${id})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${saved?'saved':''}" data-favourite-id="${id}" aria-label="${saved?'Удалить из избранного':'Добавить в избранное'}" onclick="saveV2(event,this,${id})">${saved?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.accept_exchange||c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div><div class="car-interest">${krugEyeIcon}<span>${krugViewsLabel(views)}</span></div></div></article>`}
-const krugOpenBeforePublicViews=openCarV3;openCarV3=async function(...args){await krugOpenBeforePublicViews(...args);let d=krugOpenedDetail;if(!d){krugDetailViews.textContent='';return}let count=Math.max(0,Number(d.views)||0),c=cars.find(x=>Number(x.id)===Number(d.id));if(c)c.views=count;krugDetailViews.innerHTML=`${krugEyeIcon}<span>${krugViewsLabel(count)}</span>`;paintCarViews(d.id,count)};
-</script>
-<style>
-/* KRUG v39 — Champagne Graphite profile. */
-#profile{--champagne:#cdb083;--champagne-soft:#ecd8b8;--graphite:#121413;--graphite-2:#1a1d1b;min-height:100vh;background:radial-gradient(circle at 92% 2%,rgba(205,176,131,.12),transparent 27%),linear-gradient(180deg,#101211 0%,#171a18 100%);color:#f4efe7;padding-bottom:105px}
-#profile .page-head{padding-bottom:12px}#profile .page-head .brand{color:var(--champagne-soft);letter-spacing:2px}#profile .page-head .brand i{background:var(--lime)}#profile .page-head h1{color:#f7f3ec;font-weight:650;letter-spacing:-.5px}
-#profile .profile-card{position:relative;margin:0 16px;padding:20px;border-radius:24px;overflow:hidden;background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.012)),linear-gradient(180deg,#202320,#151716);border:1px solid rgba(205,176,131,.46);box-shadow:0 24px 55px rgba(0,0,0,.33),inset 0 1px rgba(255,255,255,.06)}
-#profile .profile-card::after{content:"";position:absolute;inset:-40% -20% auto 48%;height:190px;background:radial-gradient(circle,rgba(205,176,131,.13),transparent 66%);pointer-events:none}
-#profile .avatar{width:68px;height:68px;border-radius:50%;background:linear-gradient(145deg,#292c29,#111312);border:1px solid var(--champagne);box-shadow:inset 0 0 0 5px rgba(205,176,131,.06);color:var(--champagne-soft);font-size:23px;font-weight:650}
-#profile .profile-card h2{margin:14px 0 4px;font-size:23px;letter-spacing:-.4px;color:#f8f4ed}#profile .profile-card>p{margin:0;color:#aaa9a3}
-.profile-verified{display:inline-flex;align-items:center;gap:6px;margin-top:10px;color:var(--champagne-soft);font-size:11px;font-weight:750}.profile-verified i{display:grid;place-items:center;width:17px;height:17px;border-radius:50%;background:var(--lime);color:#1b1e18;font-style:normal;font-size:10px}
-.profile-role{display:inline-flex;margin-top:11px;padding:6px 10px;border:1px solid rgba(205,176,131,.5);border-radius:999px;color:var(--champagne-soft);font-size:9px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase}
-#profile .stats{margin-top:18px;padding-top:16px;border-top:1px solid rgba(205,176,131,.22);gap:0}#profile .stat{position:relative;padding:5px 8px;background:transparent!important;border-radius:0;text-align:center;color:#aaa9a3;font-size:9px;text-transform:uppercase;letter-spacing:.5px}#profile .stat+ .stat{border-left:1px solid rgba(255,255,255,.13)}#profile .stat b{margin-bottom:4px;color:var(--champagne-soft);font-size:22px;font-weight:600}
-.profile-garage-cta{position:relative;display:block;width:calc(100% - 32px);margin:14px 16px 0;padding:17px 18px;overflow:hidden;border:1px solid rgba(205,176,131,.32);border-radius:18px;background:linear-gradient(110deg,#222522 0%,#191b19 66%,#29261f 100%);color:#f6f1e9;text-align:left;box-shadow:0 15px 35px rgba(0,0,0,.18)}.profile-garage-cta b{display:block;font-size:16px}.profile-garage-cta small{display:block;margin-top:5px;color:#aaa9a3}.profile-garage-cta span{position:absolute;right:18px;top:50%;translate:0 -50%;color:var(--champagne);font-size:25px}
-#profile>.section{padding-top:14px}#profile .panel.menu-list{margin:0;padding:0 15px;border:1px solid rgba(205,176,131,.25);border-radius:20px;background:rgba(24,27,25,.86);box-shadow:0 18px 44px rgba(0,0,0,.19)}#profile .menu-item{align-items:center;gap:11px;min-height:58px;padding:14px 2px;border-bottom:1px solid rgba(255,255,255,.08);background:transparent;color:#ece8e0;font-size:13px;font-weight:620}#profile .menu-item:last-child{border-bottom:0}#profile .menu-item::before{content:attr(data-icon);display:grid;place-items:center;flex:0 0 31px;height:31px;border:1px solid rgba(205,176,131,.3);border-radius:10px;color:var(--champagne);font-size:14px}#profile .menu-item span{margin-left:auto;color:var(--champagne);font-size:16px}#profile .menu-item.admin-menu.show{display:flex}
-@media(max-width:380px){#profile .profile-card{padding:17px}#profile .avatar{width:60px;height:60px}.profile-garage-cta{padding:15px}.profile-garage-cta small{max-width:76%}}
-</style>
-<script>
-// Selected visual direction: Champagne Graphite.
-document.querySelector('#profile .page-head h1').textContent='Профиль';
-const krugProfileCard=document.querySelector('#profile .profile-card');
-const krugVerified=document.createElement('div');krugVerified.className='profile-verified';krugVerified.innerHTML='<i>✓</i><span>Профиль подтверждён Telegram</span>';
-const krugProfileRole=document.createElement('div');krugProfileRole.className='profile-role';krugProfileRole.textContent='Частный продавец';
-krugProfileCard.querySelector('.stats').before(krugVerified,krugProfileRole);
-const krugProfileStats=krugProfileCard.querySelectorAll('.stat');if(krugProfileStats[2])krugProfileStats[2].lastChild.textContent='просмотры';
-const krugGarageCta=document.createElement('button');krugGarageCta.className='profile-garage-cta';krugGarageCta.innerHTML='<b>Мой гараж</b><small>Управляйте автомобилями и объявлениями</small><span>›</span>';krugGarageCta.onclick=showMyCars;krugProfileCard.after(krugGarageCta);
-const krugProfileIcons=['▰','⇄','♡','◌','◆','↓','×','!','♟'];document.querySelectorAll('#profile .menu-item').forEach((button,index)=>button.dataset.icon=krugProfileIcons[index]||'•');
-const krugLoadProfileBeforeLuxury=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeLuxury();try{let d=await krugJson('/api/me'),p=document.querySelector('.profile-card'),stats=p?.querySelectorAll('.stat b');if(stats?.[2])stats[2].textContent=Number(d.views)||0;krugProfileRole.textContent=d.user?.role==='dealer'?'Проверенный дилер':'Частный продавец'}catch(_){}};
-krugLoadProfile();
-</script>
-<style>
-/* KRUG v40 — Champagne Graphite design system across the whole marketplace. */
-:root{--ink:#121413;--panel:#1b1e1c;--muted:#aaa9a3;--line:rgba(205,176,131,.25);--lime:#c8ff39;--orange:#ff6848;--white:#f7f2e9;--champagne:#cdb083;--champagne-soft:#ecd8b8;--graphite:#121413;--graphite-2:#1b1e1c;--shadow:0 22px 56px rgba(0,0,0,.28)}
-html{background:#0e100f}body{background:#d8d7d0;color:var(--white)}.app{background:radial-gradient(circle at 88% 0,rgba(205,176,131,.11),transparent 25%),linear-gradient(180deg,#101211,#171a18 58%,#101211);color:var(--white)}
-.screen:not(#profile){min-height:100vh;background:transparent}.top{padding-top:20px}.brand{color:var(--champagne-soft);letter-spacing:1.8px}.brand i{width:8px;height:8px;background:var(--lime);box-shadow:0 0 0 4px rgba(200,255,57,.08)}
-.city,.icon-btn{border-color:rgba(205,176,131,.32);background:rgba(28,31,29,.78);color:#eee9df;box-shadow:inset 0 1px rgba(255,255,255,.04)}
-.hero{border:1px solid rgba(205,176,131,.38);box-shadow:0 22px 54px rgba(0,0,0,.36)}.hero:after{background:linear-gradient(180deg,rgba(8,10,9,.06),rgba(8,10,9,.84))}.hero-copy .eyebrow{color:var(--champagne-soft)}
-h1,.section h2,.page-head h1{color:#f7f3ec}.section-head{border-bottom:1px solid rgba(205,176,131,.14);padding-bottom:12px}.link{color:var(--champagne);text-decoration-color:rgba(205,176,131,.55)}
-.btn{border:1px solid rgba(205,176,131,.18);box-shadow:inset 0 1px rgba(255,255,255,.05)}.btn.lime{background:linear-gradient(135deg,#e0c49a,#b99562);border-color:#e4c99f;color:#151714}.btn.ghost{background:rgba(18,20,19,.5);border-color:rgba(237,216,184,.35);color:#fff}.btn.back{background:rgba(28,31,29,.78);border-color:rgba(205,176,131,.3);color:var(--champagne-soft)}
-.modes{padding:3px;border:1px solid rgba(205,176,131,.2);border-radius:19px;background:#151715}.mode{border:0;background:transparent;color:#9e9f99}.mode.active{background:linear-gradient(135deg,#d7ba8d,#b79260);color:#171916;box-shadow:0 7px 18px rgba(0,0,0,.25)}
-.price-row{padding-top:5px}.chip{border-color:rgba(205,176,131,.25);background:#1b1e1c;color:#c6c2ba}.chip.active{border-color:var(--champagne);background:var(--champagne);color:#161816}
-.car{border-color:rgba(205,176,131,.27);background:linear-gradient(155deg,#202320,#171917);box-shadow:0 16px 38px rgba(0,0,0,.25)}.car-media{background:#232624}.car-media::after{content:"";position:absolute;inset:55% 0 0;background:linear-gradient(transparent,rgba(10,12,11,.32));pointer-events:none}.badge{z-index:1;border:1px solid rgba(237,216,184,.5);background:rgba(19,21,20,.82);color:var(--champagne-soft);backdrop-filter:blur(10px)}.badge.urgent{border-color:rgba(255,104,72,.7);background:rgba(144,43,25,.88);color:#fff}.heart{z-index:2;border:1px solid rgba(205,176,131,.35);background:rgba(16,18,17,.78);color:var(--champagne-soft);backdrop-filter:blur(10px)}.heart.saved{background:var(--champagne);color:#171917}.car h3{color:#f5f1e9}.price{color:var(--champagne-soft)}.meta,.car-interest{color:#a3a49e}.tag{border:1px solid rgba(205,176,131,.17);background:#252825;color:#c6c2ba}
-.urgent-banner{border:1px solid rgba(205,176,131,.3);background:linear-gradient(135deg,#202320,#141615);box-shadow:var(--shadow)}.urgent-banner h2{color:#f5f1e9}.urgent-banner p{color:#aaa9a3}.urgent-banner.subscribed .btn{background:var(--champagne);color:#161816}
-.page-head .eyebrow{color:var(--champagne)}.page-head p{color:#aaa9a3}.search-panel input,.search-panel select,.auto-filters select,.auto-filters button{border-color:rgba(205,176,131,.26);background:#1b1e1c;color:#eee9df}.search-panel input::placeholder{color:#858982}.search-panel input:focus,.search-panel select:focus{outline:0;border-color:var(--champagne);box-shadow:0 0 0 3px rgba(205,176,131,.14)}.auto-filters .filter-reset{color:var(--champagne-soft)}.filter-result{color:#999b95}
-.catalog-more{border-color:rgba(205,176,131,.35)!important;background:#1b1e1c!important;color:var(--champagne-soft)!important}
-.urgent-cover{border:1px solid rgba(205,176,131,.4);box-shadow:0 20px 48px rgba(0,0,0,.35)}.urgent-cover .count{border:1px solid rgba(237,216,184,.2);background:rgba(13,15,14,.55);color:#ddd7cd}
-.form-progress i{background:#343733}.form-progress i.on{background:linear-gradient(90deg,#b79260,#e3c89d)}.panel{border-color:rgba(205,176,131,.25);background:linear-gradient(145deg,#202320,#181a18);color:#eeeae2;box-shadow:0 15px 34px rgba(0,0,0,.16)}.panel h3{color:#f4efe7}.field label{color:#b9b5ad}
-#create input,#create textarea,#create select,.field input,.field select,.field textarea{border-color:rgba(205,176,131,.28)!important;background:#121413!important;color:#f1ece3!important;-webkit-text-fill-color:#f1ece3!important;caret-color:var(--champagne)!important}.field input:focus,.field select:focus,.field textarea:focus,#create input:focus,#create textarea:focus,#create select:focus{border-color:var(--champagne)!important;box-shadow:0 0 0 4px rgba(205,176,131,.12)!important}.field input::placeholder,.field textarea::placeholder,#create input::placeholder,#create textarea::placeholder{color:#737770!important;-webkit-text-fill-color:#737770!important}
-.type-card{border-color:rgba(205,176,131,.25);background:#141614;color:#b9b5ad}.type-card.active{border-color:var(--champagne);background:linear-gradient(135deg,#d7ba8d,#b79260);color:#171917}.upload{border-color:rgba(205,176,131,.55);background:rgba(18,20,19,.72);color:var(--champagne-soft)}.next{border-color:#d8bd92;background:linear-gradient(135deg,#d7ba8d,#af8958);color:#161816}.toggle{border-color:rgba(255,255,255,.08)}.toggle small{color:#92958f}.switch{background:#3d403c}.switch.on{background:var(--champagne)}
-.legal-consent{color:#b4b1aa}.legal-link{color:var(--champagne-soft)!important}
-.modal{background:rgba(4,6,5,.78);backdrop-filter:blur(8px)}.sheet{border:1px solid rgba(205,176,131,.35);border-bottom:0;background:linear-gradient(180deg,#202320,#111312);color:#f3eee6;box-shadow:0 -25px 65px rgba(0,0,0,.42)}.grab{background:#786b57}.detail-photo{border:1px solid rgba(205,176,131,.3)}.detail-title h2{color:#f6f1e9}.detail-specs{margin-bottom:13px}.spec{border:1px solid rgba(205,176,131,.2);background:#171917;color:#9da099}.spec b{color:var(--champagne-soft)}.detail-thumbs img{border-color:transparent}.detail-thumbs img.active{border-color:var(--champagne)}.detail-views{color:#a7a9a3}
-.nav{border-top-color:rgba(205,176,131,.25);background:rgba(15,17,16,.93);box-shadow:0 -16px 40px rgba(0,0,0,.2)}.nav button{color:#777b76}.nav button.active{color:var(--champagne-soft)}.nav button.active span{color:var(--champagne)}.toast{border:1px solid rgba(205,176,131,.38);background:#242724;color:#f2ede4;box-shadow:0 16px 38px rgba(0,0,0,.35)}
-.listing-insights,.sold-label{border-color:rgba(205,176,131,.2)!important;background:#1b1e1c!important;color:#c7c3ba!important}.moderation-reason{background:rgba(205,176,131,.15)!important;color:var(--champagne-soft)!important}
-@media(min-width:700px){.app{border:1px solid rgba(205,176,131,.3);box-shadow:0 28px 80px rgba(0,0,0,.34)}}
-</style>
-<script>
-// Keep Telegram browser chrome aligned with the selected luxury palette.
-try{window.Telegram?.WebApp?.setHeaderColor?.('#101211');window.Telegram?.WebApp?.setBackgroundColor?.('#101211');window.Telegram?.WebApp?.setBottomBarColor?.('#0f1110')}catch(_){}
-</script>
-<script>
-// KRUG v41: Russian/Latin brand aliases and typo-friendly catalogue search.
-const krugBrandAliases={
-  toyota:['toyota','тойота','тайота','тоёта'],ford:['ford','форд'],lada:['lada','лада','ваз','vaz'],
-  volkswagen:['volkswagen','фольксваген','фольцваген','vw'],mercedes:['mercedes','мерседес','мерин'],
-  bmw:['bmw','бмв'],hyundai:['hyundai','хендай','хундай','хёндай'],kia:['kia','киа'],
-  nissan:['nissan','ниссан'],renault:['renault','рено'],chevrolet:['chevrolet','шевроле'],
-  skoda:['skoda','шкода'],audi:['audi','ауди'],honda:['honda','хонда'],mazda:['mazda','мазда'],
-  mitsubishi:['mitsubishi','митсубиси','мицубиси'],lexus:['lexus','лексус'],subaru:['subaru','субару'],
-  peugeot:['peugeot','пежо'],citroen:['citroen','ситроен'],opel:['opel','опель'],volvo:['volvo','вольво'],
-  geely:['geely','джили'],haval:['haval','хавал'],chery:['chery','чери'],uaz:['uaz','уаз'],gaz:['gaz','газ']
-};
-const krugAliasIndex=Object.entries(krugBrandAliases).reduce((index,[brand,names])=>{names.forEach(name=>index[name.replace(/ё/g,'е')]=brand);return index},{});
-const krugCyrillicLatin={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sh',ъ:'',ы:'i',ь:'',э:'e',ю:'yu',я:'ya'};
-function krugPhonetic(word){return [...word].map(letter=>krugCyrillicLatin[letter]??letter).join('').replace(/c/g,'k').replace(/q/g,'k').replace(/y/g,'i')}
-function krugSearchWords(value){let clean=String(value||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]+/g,' ').trim();return clean?clean.split(/\s+/).map(word=>krugAliasIndex[word]||krugPhonetic(word)):[]}
-function krugDistance(a,b){let row=[...Array(b.length+1).keys()];for(let i=1;i<=a.length;i++){let next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(next[j-1]+1,row[j]+1,row[j-1]+(a[i-1]===b[j-1]?0:1));row=next}return row[b.length]}
-function krugMatchesCar(car,query){let wanted=krugSearchWords(query),available=krugSearchWords(`${car.name||''} ${car.brand||''} ${car.model||''}`);return wanted.every(word=>available.some(candidate=>candidate.includes(word)||word.includes(candidate)||(word.length>=4&&candidate.length>=4&&krugDistance(word,candidate)<=1)))}
-applyCatalog=function(){
-  let q=(catalogSearch?.value||'').trim(),list=cars.filter(c=>krugMatchesCar(c,q));
-  if(catalogRange!=='all'){if(catalogRange==='300+')list=list.filter(c=>c.price>=300000);else{let[a,z]=catalogRange.split('-').map(x=>+x*1000);list=list.filter(c=>c.price>=a&&c.price<=z)}}
-  if(filterTransmission.value)list=list.filter(c=>c.transmission===filterTransmission.value);if(filterBody.value)list=list.filter(c=>c.body_type===filterBody.value);if(filterDrive.value)list=list.filter(c=>c.drive===filterDrive.value);
-  let sort=catalogSort?.value||'new';list=[...list].sort((a,b)=>sort==='cheap'?a.price-b.price:sort==='expensive'?b.price-a.price:sort==='year'?b.year-a.year:(b.id||0)-(a.id||0));render(list,'catalogCards');
-  if(!list.length)document.getElementById('catalogCards').innerHTML='<div class="panel search-empty"><h3>Автомобили не найдены</h3><p class="meta">Попробуйте написать марку или модель по-другому либо сбросьте фильтры.</p><button class="btn back" type="button" onclick="document.querySelector(\'.filter-reset\').click()">Сбросить фильтры</button></div>';
-  krugFilterResult.textContent=`Найдено автомобилей: ${list.length}`;if(typeof paintKrugMore==='function')paintKrugMore()
-};
-// Earlier listeners retain the previous function reference, so bind the enhanced search explicitly.
-catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);
-[filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
-</script>
-<script>
-// KRUG v43: server-backed recently viewed cars.
-const krugRecentButton=document.createElement('button');
-krugRecentButton.className='menu-item';krugRecentButton.dataset.icon='◷';krugRecentButton.innerHTML='Недавно просмотренные <span>›</span>';
-const krugFavouriteMenu=[...document.querySelectorAll('#profile .menu-item')].find(button=>button.textContent.includes('Избранное'));
-if(krugFavouriteMenu)krugFavouriteMenu.insertAdjacentElement('afterend',krugRecentButton);else document.querySelector('#profile .menu-list')?.append(krugRecentButton);
-async function showRecentlyViewed(){
-  try{let list=await krugJson('/api/recent');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Недавно просмотренные';document.querySelector('#catalog .page-head p').textContent='Автомобили, которые вы открывали';document.getElementById('catalogCards').innerHTML=list.length?list.map(card).join(''):'<div class="panel search-empty"><h3>История пока пустая</h3><p class="meta">Откройте любое объявление — оно появится здесь.</p></div>';krugMoreButton?.classList.remove('show')}
-  catch(error){toast(error.message)}
-}
-krugRecentButton.onclick=showRecentlyViewed;
-const krugCatalogNav=document.querySelector('.nav [data-go="catalog"]');
-krugCatalogNav?.addEventListener('click',()=>{document.querySelector('#catalog .page-head h1').textContent='Автомобили';document.querySelector('#catalog .page-head p').textContent='Екатеринбург · частники и дилеры';applyCatalog()});
-</script>
-<script>
-// KRUG v44: catalogue search, filters and sorting run across the full server catalogue.
-const krugClientApplyCatalog=applyCatalog;let krugServerSearchTimer=0,krugServerSearchSeq=0;
-function krugServerCatalogueQuery(offset){
-  let params=new URLSearchParams({paged:'1',limit:String(KRUG_PAGE_SIZE),offset:String(offset),sort:catalogSort?.value||'new'}),query=krugSearchWords(catalogSearch?.value||'').join(' ');
-  if(query)params.set('q',query);if(filterTransmission.value)params.set('transmission',filterTransmission.value);if(filterBody.value)params.set('body',filterBody.value);if(filterDrive.value)params.set('drive',filterDrive.value);
-  if(catalogRange!=='all'){if(catalogRange==='300+')params.set('price_min','300000');else{let[a,z]=catalogRange.split('-').map(value=>Number(value)*1000);params.set('price_min',String(a));params.set('price_max',String(z))}}
-  return params.toString()
-}
-loadKrugCarPage=async function(reset=false){
-  if(location.protocol==='file:'){krugClientApplyCatalog();return}if(!reset&&krugMoreButton.classList.contains('busy'))return;
-  let requestId=++krugServerSearchSeq,offset=reset?0:krugCatalogOffset;krugMoreButton.classList.add('busy');if(reset)krugFilterResult.textContent='Ищем автомобили…';
-  try{let d=await krugJson(`/api/cars?${krugServerCatalogueQuery(offset)}`);if(requestId!==krugServerSearchSeq)return;let known=new Set((reset?[]:cars).map(car=>Number(car.id)));cars=reset?d.items:[...cars,...d.items.filter(car=>!known.has(Number(car.id)))];krugCatalogOffset=offset+d.items.length;krugCatalogHasMore=!!d.has_more;krugCatalogTotal=Number(d.total)||0;render(cars,'catalogCards');if(!cars.length)document.getElementById('catalogCards').innerHTML='<div class="panel search-empty"><h3>Автомобили не найдены</h3><p class="meta">Попробуйте изменить запрос или сбросить фильтры.</p><button class="btn back" type="button" onclick="document.querySelector(\'.filter-reset\').click()">Сбросить фильтры</button></div>';paintKrugMore()}
-  catch(error){if(requestId===krugServerSearchSeq)toast(error.message)}finally{if(requestId===krugServerSearchSeq)krugMoreButton.classList.remove('busy')}
-};
-applyCatalog=function(){clearTimeout(krugServerSearchTimer);krugServerSearchTimer=setTimeout(()=>loadKrugCarPage(true),220)};
-catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);[filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
-setTimeout(()=>loadKrugCarPage(true),0);
-</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="privacy-gate" id="privacyGate"><div class="privacy-gate-card"><div class="eyebrow"><span class="dot"></span> защита данных</div><h2>Перед использованием КРУГ</h2><p id="privacyOperatorText">Проверяем реквизиты оператора…</p><label class="privacy-choice"><input id="privacyPolicyChoice" type="checkbox"><span>Я отдельно даю согласие на обработку персональных данных по <button type="button" class="legal-link" onclick="openLegal('privacy')">политике конфиденциальности</button>.</span></label><label class="privacy-choice"><input id="privacyRulesChoice" type="checkbox"><span>Я принимаю <button type="button" class="legal-link" onclick="openLegal('rules')">правила КРУГ</button>. Это отдельное подтверждение.</span></label><div class="privacy-gate-status" id="privacyGateStatus"></div><div class="privacy-gate-actions"><button class="btn lime" id="privacyAcceptButton">Принять и продолжить</button><button class="btn back" id="privacyBrowseButton">Только смотреть каталог</button></div></div></div>
+
+  <script src="app.js" defer></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 """KRUG marketplace API: users, listings, favourites, subscriptions and exchanges."""
-import hashlib, hmac, json, os, re, sqlite3, threading, time
+import base64, binascii, hashlib, hmac, io, json, os, re, sqlite3, threading, time, warnings
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -7,15 +7,33 @@ from pathlib import Path
 from urllib.parse import parse_qs, parse_qsl, urlparse
 from urllib.request import Request, urlopen
 
+try:
+    from PIL import Image, ImageOps, UnidentifiedImageError
+except ImportError:  # The server remains readable locally, but uploads fail closed.
+    Image=ImageOps=UnidentifiedImageError=None
+
 ROOT=Path(__file__).resolve().parent
 DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
-WEBHOOK_SECRET=hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else ""
+ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
+INIT_DATA_MAX_AGE=max(300,min(int(os.environ.get("TELEGRAM_INIT_MAX_AGE","3600")),86400))
+POLICY_VERSION=os.environ.get("PRIVACY_POLICY_VERSION","2026-08-16").strip()
+RULES_VERSION=os.environ.get("TERMS_VERSION","2026-08-16").strip()
+OPERATOR_NAME=os.environ.get("LEGAL_OPERATOR_NAME","").strip()
+OPERATOR_EMAIL=os.environ.get("LEGAL_OPERATOR_EMAIL","").strip()
+OPERATOR_ADDRESS=os.environ.get("LEGAL_OPERATOR_ADDRESS","").strip()
+DATA_RESIDENCY_CONFIRMED=os.environ.get("DATA_RESIDENCY_RF_CONFIRMED","")=="1"
+LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS and DATA_RESIDENCY_CONFIRMED)
+WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
+PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
+ALLOWED_ORIGINS={PUBLIC_ORIGIN,*[x.strip().rstrip("/") for x in os.environ.get("ALLOWED_ORIGINS","").split(",") if x.strip()]}
 NOW=lambda: datetime.now(timezone.utc)
 RATE_BUCKETS={}; RATE_LOCK=threading.Lock()
+ALLOWED_IMAGE_TYPES={"image/jpeg":(b"\xff\xd8\xff",),"image/png":(b"\x89PNG\r\n\x1a\n",),"image/webp":(b"RIFF",)}
+if Image: Image.MAX_IMAGE_PIXELS=20_000_000
 
 def is_admin(user_id): return str(user_id) in ADMIN_IDS
 
@@ -32,6 +50,8 @@ def can_manage_staff(user_id): return staff_role(user_id) in {"owner","admin"}
 def rate_allowed(key,limit,window):
     now=time.time()
     with RATE_LOCK:
+        if len(RATE_BUCKETS)>10000:
+            for old_key in list(RATE_BUCKETS)[:2000]: RATE_BUCKETS.pop(old_key,None)
         recent=[x for x in RATE_BUCKETS.get(key,[]) if now-x<window]
         if len(recent)>=limit: return False
         recent.append(now); RATE_BUCKETS[key]=recent
@@ -48,7 +68,7 @@ class PGConnection:
     def __init__(self):
         import psycopg
         from psycopg.rows import dict_row
-        self.db=psycopg.connect(DATABASE_URL,row_factory=dict_row)
+        self.db=psycopg.connect(DATABASE_URL,row_factory=dict_row,connect_timeout=5,options="-c statement_timeout=8000 -c idle_in_transaction_session_timeout=10000")
     def execute(self,sql,params=()):
         sql=sql.replace("?","%s")
         if sql.startswith("INSERT OR IGNORE INTO subscriptions"):
@@ -92,6 +112,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS car_views(viewer_id TEXT NOT NULL, car_id {ref_id} NOT NULL, view_day TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(viewer_id,car_id,view_day), FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS price_history(id {generic_id}, car_id {ref_id} NOT NULL, old_price INTEGER NOT NULL, new_price INTEGER NOT NULL, changed_at TEXT NOT NULL, FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS staff_roles(user_id TEXT PRIMARY KEY, role TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
+        CREATE TABLE IF NOT EXISTS audit_log(id {generic_id}, actor_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT DEFAULT '', created_at TEXT NOT NULL);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -102,10 +123,22 @@ def init_db():
         add_column(db,"cars","transmission","TEXT DEFAULT ''")
         add_column(db,"cars","body_type","TEXT DEFAULT ''")
         add_column(db,"cars","drive","TEXT DEFAULT ''")
+        add_column(db,"cars","fuel","TEXT DEFAULT ''")
+        add_column(db,"cars","engine_volume","REAL NOT NULL DEFAULT 0")
+        add_column(db,"cars","engine_power","INTEGER NOT NULL DEFAULT 0")
+        add_column(db,"cars","color","TEXT DEFAULT ''")
+        add_column(db,"cars","owners_count","INTEGER NOT NULL DEFAULT 0")
         add_column(db,"cars","vin","TEXT DEFAULT ''")
         add_column(db,"cars","thumbnail","TEXT DEFAULT ''")
         add_column(db,"cars","accept_exchange","INTEGER NOT NULL DEFAULT 0")
         add_column(db,"cars","search_key","TEXT DEFAULT ''")
+        add_column(db,"cars","phone_public","INTEGER NOT NULL DEFAULT 0")
+        add_column(db,"cars","contact_consent_at","TEXT DEFAULT NULL")
+        add_column(db,"cars","consent_version","TEXT DEFAULT ''")
+        add_column(db,"subscriptions","filters","TEXT DEFAULT '{}'")
+        add_column(db,"subscriptions","name","TEXT DEFAULT ''")
+        add_column(db,"exchanges","offer_text","TEXT DEFAULT ''")
+        add_column(db,"exchanges","cash_amount","INTEGER NOT NULL DEFAULT 0")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
@@ -116,15 +149,21 @@ def init_db():
         for row in db.execute("SELECT id,name FROM cars WHERE search_key IS NULL OR search_key='' ").fetchall():
             db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(row["name"] if DATABASE_URL else row[1]),row["id"] if DATABASE_URL else row[0]))
         add_column(db,"users","company","TEXT DEFAULT ''")
+        add_column(db,"users","dealer_verified","INTEGER NOT NULL DEFAULT 0")
+        add_column(db,"users","privacy_consent_version","TEXT DEFAULT ''")
+        add_column(db,"users","privacy_consent_at","TEXT DEFAULT NULL")
+        add_column(db,"users","rules_version","TEXT DEFAULT ''")
+        add_column(db,"users","rules_accepted_at","TEXT DEFAULT NULL")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
             now=NOW().isoformat(); urgent=(NOW()+timedelta(hours=24)).isoformat()
             db.executemany("INSERT INTO cars(name,price,year,km,type,urgent,pos,created_at,updated_at,urgent_until) VALUES(?,?,?,?,?,?,?,?,?,?)",[(*x,now,now,urgent if x[5] else None) for x in seed])
 
-def validate_telegram_init_data(raw,max_age=86400):
+def validate_telegram_init_data(raw,max_age=INIT_DATA_MAX_AGE):
     """Return the verified Telegram user, or None when initData is invalid/expired."""
-    if not BOT_TOKEN or not raw: return None
+    if not BOT_TOKEN or not raw or len(raw)>8192: return None
     try:
         fields=dict(parse_qsl(raw,keep_blank_values=True)); received=fields.pop("hash","")
         if not received: return None
@@ -133,7 +172,8 @@ def validate_telegram_init_data(raw,max_age=86400):
         calculated=hmac.new(secret,check.encode("utf-8"),hashlib.sha256).hexdigest()
         if not hmac.compare_digest(calculated,received): return None
         auth_date=int(fields.get("auth_date","0"))
-        if auth_date<=0 or abs(int(time.time())-auth_date)>max_age: return None
+        age=int(time.time())-auth_date
+        if auth_date<=0 or age < -60 or age>max_age: return None
         user=json.loads(fields.get("user","{}"))
         return user if isinstance(user,dict) and user.get("id") else None
     except (ValueError,TypeError,json.JSONDecodeError): return None
@@ -141,11 +181,12 @@ def validate_telegram_init_data(raw,max_age=86400):
 def auth_context(headers,data=None,query=None):
     tg_user=validate_telegram_init_data(headers.get("X-Telegram-Init-Data", ""))
     if tg_user: return str(tg_user["id"]),True,tg_user
-    return user_id(headers,data,query),not BOT_TOKEN,None
+    if ALLOW_DEV_AUTH: return user_id(headers,data,query),True,None
+    return "anonymous",False,None
 
 def user_id(headers,data=None,query=None):
-    value=headers.get("X-Krug-User") or (data or {}).get("user") or (query or {}).get("user",["local-user"])[0]
-    return re.sub(r"[^a-zA-Z0-9_-]","",str(value))[:80] or "local-user"
+    value=headers.get("X-Krug-User") or (data or {}).get("user") or (query or {}).get("user",["dev-user"])[0]
+    return re.sub(r"[^a-zA-Z0-9_-]","",str(value))[:80] or "dev-user"
 
 SEARCH_ALIASES={
     "тойота":"toyota","тайота":"toyota","тоёта":"toyota","форд":"ford","лада":"lada","ваз":"lada","vaz":"lada",
@@ -162,6 +203,127 @@ def normalize_search(value):
         if word in SEARCH_ALIASES: result.append(SEARCH_ALIASES[word]); continue
         result.append("".join(CYRILLIC_LATIN.get(letter,letter) for letter in word).replace("c","k").replace("q","k").replace("y","i"))
     return " ".join(result)
+
+def clean_text(value,limit):
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]","",str(value or "")).strip()[:limit]
+
+def vehicle_specs(data):
+    allowed_fuels={"","Бензин","Дизель","Гибрид","Электро","Газ"}
+    fuel=str(data.get("fuel") or "")
+    if fuel not in allowed_fuels: raise ValueError("Проверьте тип топлива")
+    try:
+        engine_volume=round(float(str(data.get("engine_volume") or "0").replace(",",".")),1)
+        engine_power=int(data.get("engine_power") or 0)
+        owners_count=int(data.get("owners_count") or 0)
+    except (TypeError,ValueError): raise ValueError("Проверьте характеристики двигателя и владельцев")
+    if not 0<=engine_volume<=10 or not 0<=engine_power<=3000 or not 0<=owners_count<=20: raise ValueError("Проверьте характеристики двигателя и владельцев")
+    return fuel,engine_volume,engine_power,clean_text(data.get("color"),30),owners_count
+
+def normalize_phone(value):
+    digits=re.sub(r"\D","",str(value or ""))
+    if not digits: return ""
+    if len(digits)==10 and digits.startswith("9"): digits="7"+digits
+    if len(digits)==11 and digits.startswith("8"): digits="7"+digits[1:]
+    if len(digits)!=11 or not digits.startswith("7"): raise ValueError("Укажите российский номер в формате +7")
+    return "+"+digits
+
+def validated_image(value,max_bytes=2_000_000,max_dimension=2400):
+    if not isinstance(value,str): raise ValueError("Некорректная фотография")
+    match=re.fullmatch(r"data:(image/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)",value)
+    if not match: raise ValueError("Разрешены только JPEG, PNG и WebP")
+    try: raw=base64.b64decode(match.group(2),validate=True)
+    except (ValueError,binascii.Error): raise ValueError("Повреждённая фотография")
+    if not raw or len(raw)>max_bytes: raise ValueError("Одна фотография должна быть не больше 2 МБ")
+    mime=match.group(1); signatures=ALLOWED_IMAGE_TYPES[mime]
+    if not any(raw.startswith(signature) for signature in signatures): raise ValueError("Тип фотографии не совпадает с содержимым")
+    if mime=="image/webp" and raw[8:12]!=b"WEBP": raise ValueError("Повреждённая WebP-фотография")
+    if not Image: raise ValueError("Безопасная обработка фотографий не установлена на сервере")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error",Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(raw)) as probe:
+                probe.verify()
+            with Image.open(io.BytesIO(raw)) as source:
+                source.seek(0)
+                if source.width<1 or source.height<1 or source.width*source.height>20_000_000:
+                    raise ValueError("Слишком большое разрешение фотографии")
+                image=ImageOps.exif_transpose(source)
+                image.thumbnail((max_dimension,max_dimension),Image.Resampling.LANCZOS)
+                has_alpha=image.mode in {"RGBA","LA"} or (image.mode=="P" and "transparency" in image.info)
+                image=image.convert("RGBA" if has_alpha else "RGB")
+                output=io.BytesIO(); image.save(output,"WEBP",quality=86,method=4)
+        sanitized=output.getvalue()
+    except (UnidentifiedImageError,OSError,SyntaxError,Image.DecompressionBombError,Image.DecompressionBombWarning):
+        raise ValueError("Повреждённая или опасная фотография")
+    if not sanitized or len(sanitized)>max_bytes:
+        raise ValueError("Фотография слишком большая после безопасной обработки")
+    return "data:image/webp;base64,"+base64.b64encode(sanitized).decode("ascii")
+
+def validated_images(values,max_count=8,max_total=8_000_000):
+    values=list(values or [])
+    if len(values)>max_count: raise ValueError(f"Можно загрузить не больше {max_count} фотографий")
+    result=[]; total=0
+    for value in values:
+        checked=validated_image(value); total+=len(checked)
+        if total>max_total: raise ValueError("Общий размер фотографий слишком большой")
+        result.append(checked)
+    return result
+
+def has_current_consent(user_id):
+    try:
+        with connect() as db: row=db.execute("SELECT privacy_consent_version,privacy_consent_at,rules_version,rules_accepted_at FROM users WHERE id=?",(str(user_id),)).fetchone()
+        if not row: return False
+        version=row["privacy_consent_version"] if DATABASE_URL else row[0]; accepted=row["privacy_consent_at"] if DATABASE_URL else row[1]; rules_version=row["rules_version"] if DATABASE_URL else row[2]; rules_at=row["rules_accepted_at"] if DATABASE_URL else row[3]
+        return bool(accepted and version==POLICY_VERSION and rules_at and rules_version==RULES_VERSION)
+    except Exception: return False
+
+def record_audit(actor_id,action,target=""):
+    try:
+        with connect() as db: db.execute("INSERT INTO audit_log(actor_id,action,target,created_at) VALUES(?,?,?,?)",(str(actor_id),str(action)[:80],str(target)[:160],NOW().isoformat()))
+    except Exception as exc: print(f"Audit write failed: {type(exc).__name__}")
+
+def request_origin_allowed(headers):
+    origin=str(headers.get("Origin") or "").rstrip("/")
+    if not origin: return ALLOW_DEV_AUTH
+    return origin in ALLOWED_ORIGINS
+
+def public_car_summary(row,faved=False):
+    source=car_dict(row,faved)
+    allowed=("id","name","price","year","km","type","urgent","urgent_until","pos","created_at","updated_at","image","thumbnail","transmission","body_type","drive","fuel","engine_volume","engine_power","color","owners_count","accept_exchange","seller_role","seller_company","views","favourite")
+    result={key:source.get(key) for key in allowed if key in source}
+    result["image"]=source.get("thumbnail") or ""
+    result.pop("thumbnail",None)
+    return result
+
+def masked_vin(value):
+    value=str(value or "")
+    return value[:3]+"*"*10+value[-4:] if len(value)==17 else ""
+
+def car_detail_payload(row,faved,user_id,authenticated):
+    data=car_dict(row,faved); owner=str(data.get("owner_id"))==str(user_id); consent=bool(data.get("contact_consent_at")); viewer_allowed=LEGAL_READY and authenticated and has_current_consent(user_id)
+    data["is_owner"]=owner
+    contact_allowed=LEGAL_READY and (owner or (viewer_allowed and consent))
+    data["phone"]=data.get("phone","") if contact_allowed and (owner or data.get("phone_public")) else ""
+    data["seller_username"]=data.get("seller_username","") if contact_allowed else ""
+    data["seller_name"]=data.get("seller_name","") if contact_allowed else ""
+    if not (owner and LEGAL_READY): data["vin"]=masked_vin(data.get("vin"))
+    for key in ("owner_id","search_key","contact_consent_at","consent_version","phone_public"):
+        if not (owner and LEGAL_READY): data.pop(key,None)
+    return data
+
+def purge_expired_data():
+    try:
+        deleted_before=(NOW()-timedelta(days=30)).isoformat(); views_before=(NOW()-timedelta(days=180)).isoformat(); audit_before=(NOW()-timedelta(days=365)).isoformat()
+        with connect() as db:
+            db.execute("DELETE FROM cars WHERE status='deleted' AND COALESCE(updated_at,created_at)<?",(deleted_before,))
+            db.execute("DELETE FROM car_views WHERE created_at<?",(views_before,))
+            db.execute("DELETE FROM audit_log WHERE created_at<?",(audit_before,))
+    except Exception as exc: print(f"Retention cleanup failed: {type(exc).__name__}")
+
+def retention_loop():
+    while True:
+        time.sleep(6*60*60)
+        purge_expired_data()
 
 def car_dict(row,faved=False):
     d=dict(row); until=d.get("urgent_until")
@@ -185,8 +347,8 @@ def notify_urgent(car_id,name,price):
             if not chat_id.isdigit(): continue
             payload=json.dumps({"chat_id":chat_id,"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}},ensure_ascii=False).encode("utf-8")
             try: urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data=payload,headers={"Content-Type":"application/json"}),timeout=8).read()
-            except Exception as exc: print(f"Telegram alert failed for {chat_id}: {exc}")
-    except Exception as exc: print(f"Telegram alerts unavailable: {exc}")
+            except Exception as exc: print(f"Telegram alert failed: {type(exc).__name__}")
+    except Exception as exc: print(f"Telegram alerts unavailable: {type(exc).__name__}")
 
 def telegram_call(method,payload):
     raw=json.dumps(payload,ensure_ascii=False).encode("utf-8")
@@ -195,7 +357,7 @@ def telegram_call(method,payload):
 def notify_exchange_user(chat_id,text):
     if not BOT_TOKEN or not str(chat_id).isdigit(): return
     try: telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
-    except Exception as exc: print(f"Exchange notification failed for {chat_id}: {exc}")
+    except Exception as exc: print(f"Exchange notification failed: {type(exc).__name__}")
 
 def notify_price_drop(car_id,name,old_price,new_price):
     if not BOT_TOKEN: return
@@ -203,7 +365,33 @@ def notify_price_drop(car_id,name,old_price,new_price):
         with connect() as db: rows=db.execute("SELECT user_id FROM favourites WHERE car_id=?",(car_id,)).fetchall()
         drop=old_price-new_price; text=f"📉 Снижение цены в избранном\n\n{name}\nБыло: {old_price:,} ₽\nСтало: {new_price:,} ₽\nВыгода: {drop:,} ₽".replace(","," ")
         for row in rows: notify_exchange_user(row["user_id"] if DATABASE_URL else row[0],text)
-    except Exception as exc: print(f"Price drop notifications failed: {exc}")
+    except Exception as exc: print(f"Price drop notifications failed: {type(exc).__name__}")
+
+def search_subscription_matches(filters,car):
+    query=normalize_search(filters.get("q") or "")
+    if query and any(token not in normalize_search(car.get("name") or "") for token in query.split()): return False
+    try:
+        if filters.get("price_min") is not None and int(car.get("price") or 0)<int(filters["price_min"]): return False
+        if filters.get("price_max") is not None and int(car.get("price") or 0)>int(filters["price_max"]): return False
+    except (TypeError,ValueError): return False
+    for key in ("transmission","body_type","drive","fuel"):
+        if filters.get(key) and str(car.get(key) or "")!=str(filters[key]): return False
+    return True
+
+def notify_saved_searches(owner_id,car):
+    if not BOT_TOKEN: return
+    try:
+        with connect() as db: rows=db.execute("SELECT telegram_user,filters,name FROM subscriptions WHERE kind='search'").fetchall()
+        for row in rows:
+            chat_id=str(row["telegram_user"] if DATABASE_URL else row[0])
+            if chat_id==str(owner_id) or not chat_id.isdigit(): continue
+            try: filters=json.loads((row["filters"] if DATABASE_URL else row[1]) or "{}")
+            except (TypeError,json.JSONDecodeError): continue
+            if not search_subscription_matches(filters,car): continue
+            title=(row["name"] if DATABASE_URL else row[2]) or "Ваш поиск"
+            text=f"🔔 Новое авто по подписке «{title}»\n\n{car['name']}\n{int(car['price']):,} ₽".replace(","," ")+"\n\nОткройте КРУГ, чтобы посмотреть объявление."
+            notify_exchange_user(chat_id,text)
+    except Exception as exc: print(f"Saved search notifications failed: {type(exc).__name__}")
 
 def telegram_welcome(update):
     message=update.get("message") or {}; text=str(message.get("text") or "")
@@ -217,37 +405,92 @@ def setup_telegram_webhook():
     if not BOT_TOKEN: return
     try:
         base=PUBLIC_URL.split("/index.html",1)[0].rstrip("/")
-        webhook=f"{base}/api/telegram/{WEBHOOK_SECRET}"
-        telegram_call("setWebhook",{"url":webhook,"allowed_updates":["message"]})
+        webhook=f"{base}/api/telegram/webhook"
+        telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message"]})
         telegram_call("setChatMenuButton",{"menu_button":{"type":"web_app","text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}})
         telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"}]})
         print("Telegram webhook configured")
-    except Exception as exc: print(f"Telegram webhook unavailable: {exc}")
+    except Exception as exc: print(f"Telegram webhook unavailable: {type(exc).__name__}")
 
 class Handler(SimpleHTTPRequestHandler):
+    server_version="KRUG"
+    sys_version=""
+
+    def version_string(self):
+        return self.server_version
     def __init__(self,*a,**kw): super().__init__(*a,directory=str(ROOT),**kw)
+    def setup(self):
+        super().setup(); self.connection.settimeout(20)
+    def log_message(self,format,*args):
+        safe_args=tuple(re.sub(r"/api/telegram/[^ ?\"]+","/api/telegram/[redacted]",str(arg)) for arg in args)
+        super().log_message(format,*safe_args)
+    def client_key(self):
+        forwarded=str(self.headers.get("X-Forwarded-For") or "").split(",",1)[0].strip()
+        return re.sub(r"[^0-9a-fA-F:._-]","",forwarded or self.client_address[0])[:80] or "unknown"
     def send_json(self,data,status=200):
-        raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.send_header("X-Content-Type-Options","nosniff"); self.send_header("Referrer-Policy","no-referrer"); self.send_header("Permissions-Policy","camera=(), microphone=(), geolocation=()"); self.end_headers(); self.wfile.write(raw)
+        raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
+    def send_empty(self,status):
+        self.send_response(status); self.send_header("Content-Length","0"); self.send_header("Cache-Control","no-store"); self.end_headers()
     def end_headers(self):
         self.send_header("X-Content-Type-Options","nosniff")
         self.send_header("Referrer-Policy","no-referrer")
-        self.send_header("X-Frame-Options","SAMEORIGIN")
+        self.send_header("Strict-Transport-Security","max-age=31536000; includeSubDomains")
+        self.send_header("Permissions-Policy","camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        self.send_header("Cross-Origin-Opener-Policy","same-origin-allow-popups")
+        self.send_header("Content-Security-Policy","default-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'; script-src 'self' https://telegram.org; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org")
         super().end_headers()
     def read_json(self):
+        if "application/json" not in str(self.headers.get("Content-Type") or "").lower(): raise ValueError("Ожидается JSON")
         n=int(self.headers.get("Content-Length","0"))
-        if n>12_000_000: raise ValueError("Слишком большой запрос")
-        return json.loads(self.rfile.read(n) or b"{}")
+        if n<0 or n>10_000_000: raise ValueError("Слишком большой запрос")
+        body=self.rfile.read(n)
+        if len(body)!=n: raise ValueError("Запрос передан не полностью")
+        data=json.loads(body or b"{}")
+        if not isinstance(data,dict): raise ValueError("Ожидается JSON-объект")
+        return data
     def require_auth(self,authenticated):
         if authenticated: return True
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
+    def require_consent(self,user_id):
+        if not LEGAL_READY:
+            self.send_json({"error":"Обработка персональных данных временно отключена до завершения юридической настройки","code":"legal_setup_required"},503); return False
+        if has_current_consent(user_id): return True
+        self.send_json({"error":"Сначала примите актуальную политику обработки данных","code":"privacy_consent_required","policy_version":POLICY_VERSION},428); return False
+    def require_origin(self):
+        if request_origin_allowed(self.headers): return True
+        self.send_json({"error":"Недопустимый источник запроса"},403); return False
+    def require_rate(self,scope,limit,window):
+        if rate_allowed((self.client_key(),scope),limit,window): return True
+        self.send_json({"error":"Слишком много запросов. Попробуйте позже"},429); return False
+    def safe_static(self,path):
+        if path in {"/","/index.html","/favicon.ico"}: return True
+        clean=Path(path.lstrip("/"))
+        if any(part.startswith(".") or part in {"render-deploy","__pycache__","work","tmp"} for part in clean.parts): return False
+        return clean.suffix.lower() in {".png",".jpg",".jpeg",".webp",".ico",".css",".js"}
+    def valid_request_target(self):
+        if len(self.path)<=4096: return True
+        self.send_json({"error":"Слишком длинный адрес запроса"},414); return False
+    def do_HEAD(self):
+        if not self.valid_request_target() or not self.require_rate("head",120,60): return
+        path=urlparse(self.path).path
+        if path.startswith("/api/"): return self.send_empty(405)
+        if not self.safe_static(path): return self.send_empty(404)
+        return super().do_HEAD()
+    def do_OPTIONS(self):
+        return self.send_empty(405)
     def do_GET(self):
+        if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":20,"release":"v44","database":"postgres" if DATABASE_URL else "sqlite","notifications":bool(BOT_TOKEN),"telegram_auth":bool(BOT_TOKEN)})
+        if not self.require_rate("get",300,60): return
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":21,"release":"v45"})
+        if path=="/api/legal": return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":LEGAL_READY,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
         if path=="/api/cars":
-            paged=query.get("paged",[""])[0]=="1"; limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,int(query.get("offset",["0"])[0])) if paged else 0
+            paged=query.get("paged",[""])[0]=="1"
+            try: limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,min(int(query.get("offset",["0"])[0]),1_000_000)) if paged else 0
+            except ValueError: return self.send_json({"error":"Некорректная пагинация"},400)
             conditions=["c.status='active'"]; filter_params=[]
             for token in normalize_search(query.get("q",[""])[0]).split(): conditions.append("c.search_key LIKE ?"); filter_params.append(f"%{token}%")
-            for key,column in (("transmission","c.transmission"),("body","c.body_type"),("drive","c.drive")):
+            for key,column in (("transmission","c.transmission"),("body","c.body_type"),("drive","c.drive"),("fuel","c.fuel")):
                 value=str(query.get(key,[""])[0])[:30]
                 if value: conditions.append(f"{column}=?"); filter_params.append(value)
             try:
@@ -259,7 +502,7 @@ class Handler(SimpleHTTPRequestHandler):
             order={"cheap":"c.price ASC,c.id DESC","expensive":"c.price DESC,c.id DESC","year":"c.year DESC,c.id DESC"}.get(sort,"c.urgent DESC,c.id DESC")
             with connect() as db:
                 total_row=db.execute(f"SELECT COUNT(*) AS count FROM cars c WHERE {where}",tuple(filter_params)).fetchone() if paged else None
-                sql="""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                sql="""SELECT c.*,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN 'dealer' ELSE 'private' END AS seller_role,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN u.company ELSE '' END AS seller_company,
                     (SELECT COUNT(*) FROM car_views v WHERE v.car_id=c.id) AS views,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
@@ -269,7 +512,7 @@ class Handler(SimpleHTTPRequestHandler):
                 rows=db.execute(sql,tuple(params)).fetchall()
             summaries=[]
             for row in rows:
-                item=car_dict(row,row["faved"]); item["image"]=item.get("thumbnail") or item.get("image") or ""; item.pop("images",None); item.pop("thumbnail",None); summaries.append(item)
+                summaries.append(public_car_summary(row,row["faved"]))
             if paged:
                 total=int(total_row["count"] if DATABASE_URL else total_row[0])
                 return self.send_json({"items":summaries,"total":total,"offset":offset,"limit":limit,"has_more":offset+len(summaries)<total})
@@ -277,47 +520,58 @@ class Handler(SimpleHTTPRequestHandler):
         detail=re.fullmatch(r"/api/cars/(\d+)",path)
         if detail:
             with connect() as db:
-                row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,u.role AS seller_role,u.company AS seller_company,
+                row=db.execute("""SELECT c.*,u.first_name AS seller_name,u.username AS seller_username,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN 'dealer' ELSE 'private' END AS seller_role,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN u.company ELSE '' END AS seller_company,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
                     WHERE c.id=? AND (c.status='active' OR c.owner_id=?)""",(uid,int(detail.group(1)),uid)).fetchone()
             if not row: return self.send_json({"error":"Объявление не найдено"},404)
             with connect() as db:
-                if row["owner_id"]!=uid:
+                if authenticated and has_current_consent(uid) and str(row["owner_id"])!=str(uid):
                     try: db.execute("INSERT INTO car_views(viewer_id,car_id,view_day,created_at) VALUES(?,?,?,?) ON CONFLICT(viewer_id,car_id,view_day) DO UPDATE SET created_at=excluded.created_at",(uid,int(detail.group(1)),NOW().date().isoformat(),NOW().isoformat()))
                     except sqlite3.IntegrityError: pass
                 vr=db.execute("SELECT COUNT(*) AS count FROM car_views WHERE car_id=?",(int(detail.group(1)),)).fetchone(); favr=db.execute("SELECT COUNT(*) AS count FROM favourites WHERE car_id=?",(int(detail.group(1)),)).fetchone()
                 phr=db.execute("SELECT old_price,new_price,changed_at FROM price_history WHERE car_id=? ORDER BY id DESC LIMIT 1",(int(detail.group(1)),)).fetchone()
-            data=car_dict(row,row["faved"]); data["is_owner"]=data.get("owner_id")==uid; data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]; data["previous_price"]=int(phr["old_price"] if DATABASE_URL else phr[0]) if phr and int(phr["old_price"] if DATABASE_URL else phr[0])>data["price"] else None
+            data=car_detail_payload(row,row["faved"],uid,authenticated); data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]; data["previous_price"]=int(phr["old_price"] if DATABASE_URL else phr[0]) if phr and int(phr["old_price"] if DATABASE_URL else phr[0])>data["price"] else None
             return self.send_json(data)
         if path=="/api/stats":
             with connect() as db:
                 ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)",(NOW().isoformat(),)).fetchone()
                 ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone()
             return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
+        personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/admin/staff","/api/admin/reports","/api/my-cars","/api/exchanges"}
+        if path in personal or path.startswith("/api/admin/"):
+            if not self.require_auth(authenticated) or not self.require_consent(uid): return
+        if path=="/api/export" and not self.require_auth(authenticated): return
         if path=="/api/subscriptions":
             if not self.require_auth(authenticated): return
-            with connect() as db: row=db.execute("SELECT 1 FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,)).fetchone()
-            return self.send_json({"urgent":bool(row)})
+            with connect() as db:
+                urgent_row=db.execute("SELECT 1 FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,)).fetchone()
+                search_row=db.execute("SELECT filters,name FROM subscriptions WHERE telegram_user=? AND kind='search'",(uid,)).fetchone()
+            search=None
+            if search_row:
+                try: filters=json.loads((search_row["filters"] if DATABASE_URL else search_row[0]) or "{}")
+                except (TypeError,json.JSONDecodeError): filters={}
+                search={"filters":filters,"name":search_row["name"] if DATABASE_URL else search_row[1]}
+            return self.send_json({"urgent":bool(urgent_row),"search":search})
         if path=="/api/favourites":
             if not self.require_auth(authenticated): return
             with connect() as db:
-                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                rows=db.execute("""SELECT c.*,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN 'dealer' ELSE 'private' END AS seller_role,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN u.company ELSE '' END AS seller_company,
                     (SELECT COUNT(*) FROM car_views v WHERE v.car_id=c.id) AS views,1 AS faved
                     FROM favourites f JOIN cars c ON c.id=f.car_id LEFT JOIN users u ON u.id=c.owner_id
                     WHERE f.user_id=? AND c.status='active' ORDER BY f.created_at DESC""",(uid,)).fetchall()
-            return self.send_json([car_dict(r,True) for r in rows])
+            return self.send_json([public_car_summary(r,True) for r in rows])
         if path=="/api/recent":
             if not self.require_auth(authenticated): return
             with connect() as db:
-                rows=db.execute("""SELECT c.*,u.role AS seller_role,u.company AS seller_company,
+                rows=db.execute("""SELECT c.*,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN 'dealer' ELSE 'private' END AS seller_role,CASE WHEN u.role='dealer' AND u.dealer_verified=1 THEN u.company ELSE '' END AS seller_company,
                     (SELECT COUNT(*) FROM car_views all_views WHERE all_views.car_id=c.id) AS views,
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved,
                     MAX(v.created_at) AS viewed_at
                     FROM car_views v JOIN cars c ON c.id=v.car_id LEFT JOIN users u ON u.id=c.owner_id
                     WHERE v.viewer_id=? AND c.status='active'
                     GROUP BY c.id,u.role,u.company ORDER BY viewed_at DESC LIMIT 20""",(uid,uid)).fetchall()
-            return self.send_json([car_dict(r,r["faved"]) for r in rows])
+            return self.send_json([public_car_summary(r,r["faved"]) for r in rows])
         if path=="/api/me":
             if not self.require_auth(authenticated): return
             with connect() as db:
@@ -350,7 +604,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth(authenticated): return
             with connect() as db:
                 rows=db.execute("""SELECT e.*, target.name AS target_name, target.owner_id AS target_owner_id,
-                    offered.name AS offered_name, sender.first_name AS sender_name, sender.username AS sender_username
+                    target.price AS target_price,target.year AS target_year,target.thumbnail AS target_image,
+                    offered.name AS offered_name,offered.price AS offered_price,offered.year AS offered_year,offered.thumbnail AS offered_image,
+                    sender.first_name AS sender_name, sender.username AS sender_username
                     FROM exchanges e JOIN cars target ON target.id=e.target_car_id
                     LEFT JOIN cars offered ON offered.id=e.offered_car_id
                     LEFT JOIN users sender ON sender.id=e.from_user
@@ -362,29 +618,52 @@ class Handler(SimpleHTTPRequestHandler):
                 user=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
                 cars_rows=db.execute("SELECT * FROM cars WHERE owner_id=? AND status<>'deleted' ORDER BY id",(uid,)).fetchall()
                 favourites=db.execute("SELECT car_id,created_at FROM favourites WHERE user_id=? ORDER BY created_at",(uid,)).fetchall()
-                subscriptions=db.execute("SELECT kind,created_at FROM subscriptions WHERE telegram_user=? ORDER BY created_at",(uid,)).fetchall()
+                subscriptions=db.execute("SELECT kind,filters,name,created_at FROM subscriptions WHERE telegram_user=? ORDER BY created_at",(uid,)).fetchall()
                 exchanges=db.execute("SELECT * FROM exchanges WHERE from_user=? OR EXISTS(SELECT 1 FROM cars WHERE cars.id=exchanges.target_car_id AND cars.owner_id=?) ORDER BY id",(uid,uid)).fetchall()
-            return self.send_json({"exported_at":NOW().isoformat(),"user":dict(user) if user else None,"cars":[car_dict(r) for r in cars_rows],"favourites":[dict(r) for r in favourites],"subscriptions":[dict(r) for r in subscriptions],"exchanges":[dict(r) for r in exchanges]})
-        if path.endswith((".py",".db",".sqlite",".yaml",".yml",".txt")) or path.startswith("/.git"):
-            return self.send_json({"error":"Not found"},404)
+                reports=db.execute("SELECT car_id,reason,details,status,created_at FROM reports WHERE reporter_id=? ORDER BY id",(uid,)).fetchall()
+                views=db.execute("SELECT car_id,view_day,created_at FROM car_views WHERE viewer_id=? ORDER BY created_at",(uid,)).fetchall()
+                staff=db.execute("SELECT role,created_by,created_at FROM staff_roles WHERE user_id=?",(uid,)).fetchone()
+                audit=db.execute("SELECT action,target,created_at FROM audit_log WHERE actor_id=? ORDER BY id",(uid,)).fetchall()
+            return self.send_json({"exported_at":NOW().isoformat(),"user":dict(user) if user else None,"cars":[car_dict(r) for r in cars_rows],"favourites":[dict(r) for r in favourites],"subscriptions":[dict(r) for r in subscriptions],"exchanges":[dict(r) for r in exchanges],"reports":[dict(r) for r in reports],"views":[dict(r) for r in views],"staff":dict(staff) if staff else None,"audit":[dict(r) for r in audit]})
+        if not self.safe_static(path): return self.send_json({"error":"Not found"},404)
         return super().do_GET()
     def do_POST(self):
         try:
-            path=urlparse(self.path).path; data=self.read_json(); now=NOW().isoformat()
-            if BOT_TOKEN and path==f"/api/telegram/{WEBHOOK_SECRET}":
+            if not self.valid_request_target() or not self.require_rate("post",120,60): return
+            path=urlparse(self.path).path; is_webhook=bool(BOT_TOKEN and path=="/api/telegram/webhook")
+            if not is_webhook and not self.require_origin(): return
+            data=self.read_json(); now=NOW().isoformat()
+            if is_webhook:
+                supplied=str(self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "")
+                if not supplied or not hmac.compare_digest(supplied,WEBHOOK_SECRET): return self.send_json({"error":"Not found"},404)
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
             if path=="/api/session":
-                first=str(data.get("first_name") or "Пользователь")[:80]; username=str(data.get("username") or "")[:80]
-                with connect() as db: db.execute("INSERT INTO users(id,first_name,username,created_at,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,updated_at=excluded.updated_at",(uid,first,username,now,now))
-                return self.send_json({"ok":True,"user":uid})
+                if not LEGAL_READY: return self.send_json({"error":"Сбор персональных данных временно отключён: владелец сервиса ещё не заполнил юридические реквизиты и не подтвердил хранение данных в РФ","code":"legal_setup_required"},503)
+                already=has_current_consent(uid)
+                if not already:
+                    if data.get("privacy_consent") is not True or str(data.get("policy_version") or "")!=POLICY_VERSION:
+                        return self.send_json({"error":"Нужно отдельное согласие на обработку персональных данных","code":"privacy_consent_required","policy_version":POLICY_VERSION},428)
+                    if data.get("rules_accepted") is not True or str(data.get("rules_version") or "")!=RULES_VERSION:
+                        return self.send_json({"error":"Нужно отдельно принять актуальные правила КРУГ","code":"rules_acceptance_required","rules_version":RULES_VERSION},428)
+                first=clean_text((tg_user or data).get("first_name") or "Пользователь",80); username=clean_text((tg_user or data).get("username") or "",80).lstrip("@")
+                if username and not re.fullmatch(r"[A-Za-z0-9_]{5,32}",username): username=""
+                with connect() as db:
+                    previous=db.execute("SELECT privacy_consent_at,rules_accepted_at FROM users WHERE id=?",(uid,)).fetchone(); consent_at=(previous["privacy_consent_at"] if DATABASE_URL else previous[0]) if previous and already else now; rules_at=(previous["rules_accepted_at"] if DATABASE_URL else previous[1]) if previous and already else now
+                    if username: db.execute("UPDATE users SET username='' WHERE id<>? AND LOWER(username)=LOWER(?)",(uid,username))
+                    db.execute("INSERT INTO users(id,first_name,username,privacy_consent_version,privacy_consent_at,rules_version,rules_accepted_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET first_name=excluded.first_name,username=excluded.username,privacy_consent_version=excluded.privacy_consent_version,privacy_consent_at=excluded.privacy_consent_at,rules_version=excluded.rules_version,rules_accepted_at=excluded.rules_accepted_at,updated_at=excluded.updated_at",(uid,first,username,POLICY_VERSION,consent_at,RULES_VERSION,rules_at,now,now))
+                if not already:
+                    record_audit(uid,"privacy_consent",POLICY_VERSION)
+                    record_audit(uid,"rules_accepted",RULES_VERSION)
+                return self.send_json({"ok":True,"user":uid,"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION})
+            if not self.require_consent(uid): return
             if path=="/api/admin/staff":
                 if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
                 identifier=str(data.get("identifier") or "").strip().lstrip("@"); role=str(data.get("role") or "")
                 if role not in {"admin","moderator"}: return self.send_json({"error":"Выберите роль"},400)
-                if not identifier: return self.send_json({"error":"Укажите Telegram ID или username"},400)
+                if not re.fullmatch(r"(?:\d{5,20}|[A-Za-z0-9_]{5,32})",identifier): return self.send_json({"error":"Укажите корректный Telegram ID или username"},400)
                 with connect() as db:
                     target=db.execute("SELECT id,first_name,username FROM users WHERE id=? OR LOWER(username)=LOWER(?)",(identifier,identifier)).fetchone()
                     if not target: return self.send_json({"error":"Пользователь сначала должен открыть бота КРУГ"},404)
@@ -392,29 +671,33 @@ class Handler(SimpleHTTPRequestHandler):
                     if target_id in ADMIN_IDS: return self.send_json({"error":"Владелец уже имеет полный доступ"},409)
                     db.execute("""INSERT INTO staff_roles(user_id,role,created_by,created_at) VALUES(?,?,?,?)
                         ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,created_by=excluded.created_by,created_at=excluded.created_at""",(target_id,role,uid,now))
+                record_audit(uid,"staff_granted",f"{target_id}:{role}")
                 return self.send_json({"ok":True,"user_id":target_id,"role":role},201)
             if path=="/api/cars":
                 if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
-                name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
+                name=clean_text(data.get("name"),80); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
-                phone=str(data.get("phone","")).strip()
-                if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                phone=normalize_phone(data.get("phone")); phone_public=int(bool(phone) and data.get("phone_public") is True)
+                if phone and not phone_public: return self.send_json({"error":"Для публикации телефона нужно отдельное разрешение"},400)
                 with connect() as db: contact_user=db.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
                 contact_username=(str(tg_user.get("username") or "") if tg_user else "") or (str(contact_user["username"] if DATABASE_URL else contact_user[0]) if contact_user else "")
                 if not phone and not contact_username: return self.send_json({"error":"Укажите телефон: в вашем Telegram нет публичного username"},400)
+                if data.get("contact_consent") is not True or str(data.get("policy_version") or "")!=POLICY_VERSION: return self.send_json({"error":"Отдельно разрешите показывать контакт покупателям"},400)
                 images=data.get("images") if isinstance(data.get("images"),list) else ([data.get("image")] if data.get("image") else [])
-                images=[str(x) for x in images[:8] if x]
-                if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
+                images=validated_images([x for x in images if x])
                 image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or "")
-                if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)
+                if thumbnail: thumbnail=validated_image(thumbnail,250_000)
                 transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
+                fuel,engine_volume,engine_power,color,owners_count=vehicle_specs(data)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,vin,thumbnail,accept_exchange) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],uid,now,now,until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange)); cid=cur.lastrowid
-                    db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name[:80]),cid))
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange)); cid=cur.lastrowid
+                    db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name),cid))
+                record_audit(uid,"listing_created",cid)
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
+                threading.Thread(target=notify_saved_searches,args=(uid,{"id":cid,"name":name[:80],"price":price,"transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel}),daemon=True).start()
                 return self.send_json({"ok":True,"id":cid},201)
             m=re.fullmatch(r"/api/cars/(\d+)/favourite",path)
             if m:
@@ -430,11 +713,31 @@ class Handler(SimpleHTTPRequestHandler):
                         db.execute("INSERT INTO favourites(user_id,car_id,created_at) VALUES(?,?,?)",(uid,cid,now)); state=True
                 return self.send_json({"ok":True,"favourite":state})
             if path=="/api/subscriptions":
-                with connect() as db: db.execute("INSERT OR IGNORE INTO subscriptions(telegram_user,kind,created_at) VALUES(?,?,?)",(uid,"urgent",now))
-                return self.send_json({"ok":True})
+                kind=str(data.get("kind") or "urgent")
+                if kind=="urgent":
+                    with connect() as db: db.execute("INSERT OR IGNORE INTO subscriptions(telegram_user,kind,created_at) VALUES(?,?,?)",(uid,"urgent",now))
+                    return self.send_json({"ok":True,"urgent":True})
+                if kind!="search": return self.send_json({"error":"Неизвестный тип подписки"},400)
+                raw=data.get("filters") if isinstance(data.get("filters"),dict) else {}
+                allowed_values={"transmission":{"Автомат","Механика","Робот","Вариатор"},"body_type":{"Седан","Хэтчбек","Универсал","Кроссовер","Внедорожник","Минивэн","Купе","Пикап"},"drive":{"Передний","Задний","Полный"},"fuel":{"Бензин","Дизель","Гибрид","Электро","Газ"}}
+                filters={"q":clean_text(raw.get("q"),80)}
+                for key,values in allowed_values.items():
+                    value=str(raw.get(key) or ""); filters[key]=value if value in values else ""
+                for key in ("price_min","price_max"):
+                    value=raw.get(key)
+                    if value not in (None,""):
+                        try: filters[key]=max(0,min(int(value),100_000_000))
+                        except (TypeError,ValueError): return self.send_json({"error":"Некорректная цена подписки"},400)
+                if filters.get("price_min",0)>filters.get("price_max",100_000_000): return self.send_json({"error":"Минимальная цена выше максимальной"},400)
+                if not any(value not in ("",None,0) for value in filters.values()): return self.send_json({"error":"Сначала задайте хотя бы один параметр поиска"},400)
+                label=clean_text(data.get("name"),80) or "Подходящие автомобили"
+                with connect() as db:
+                    db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='search'",(uid,))
+                    db.execute("INSERT INTO subscriptions(telegram_user,kind,created_at,filters,name) VALUES(?,?,?,?,?)",(uid,"search",now,json.dumps(filters,ensure_ascii=False),label))
+                return self.send_json({"ok":True,"search":{"filters":filters,"name":label}})
             report=re.fullmatch(r"/api/cars/(\d+)/report",path)
             if report:
-                cid=int(report.group(1)); reason=str(data.get("reason") or "other")[:40]; details=str(data.get("details") or "").strip()[:500]
+                cid=int(report.group(1)); reason=str(data.get("reason") or "other")[:40]; details=clean_text(data.get("details"),500)
                 review_owner=None
                 if not rate_allowed((uid,"report"),15,3600): return self.send_json({"error":"Слишком много жалоб. Попробуйте позже"},429)
                 allowed={"fraud","wrong_info","sold","duplicate","other"}
@@ -454,50 +757,77 @@ class Handler(SimpleHTTPRequestHandler):
                     threading.Thread(target=notify_exchange_user,args=(review_owner,"⚠️ Объявление временно отправлено на проверку после нескольких жалоб. Оно скрыто из каталога, но доступно в разделе «Мои объявления»."),daemon=True).start()
                 return self.send_json({"ok":True,"under_review":total>=3},201)
             if path=="/api/exchanges":
-                target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None
+                target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None; offer_text=clean_text(data.get("offer_text"),500); cash_amount=int(data.get("cash_amount") or 0)
+                if cash_amount<0 or cash_amount>100_000_000: return self.send_json({"error":"Проверьте сумму доплаты"},400)
+                if not offered and len(offer_text)<3: return self.send_json({"error":"Опишите ваше предложение"},400)
                 with connect() as db:
-                    target_row=db.execute("SELECT owner_id,name FROM cars WHERE id=? AND status='active'",(target,)).fetchone()
+                    target_row=db.execute("SELECT owner_id,name,accept_exchange FROM cars WHERE id=? AND status='active'",(target,)).fetchone()
                     if not target_row: return self.send_json({"error":"Объявление не найдено"},404)
                     target_owner=target_row["owner_id"] if DATABASE_URL else target_row[0]
+                    accepts=target_row["accept_exchange"] if DATABASE_URL else target_row[2]
+                    if not accepts: return self.send_json({"error":"Продавец не принимает предложения обмена"},409)
                     if target_owner==uid: return self.send_json({"error":"Нельзя предложить обмен самому себе"},400)
                     offered_row=db.execute("SELECT name FROM cars WHERE id=? AND owner_id=? AND status='active'",(offered,uid)).fetchone() if offered else None
-                    if not offered_row: return self.send_json({"error":"Выберите своё активное объявление"},400)
+                    if offered and not offered_row: return self.send_json({"error":"Выберите своё активное объявление"},400)
                     if db.execute("SELECT 1 FROM exchanges WHERE from_user=? AND target_car_id=? AND status='new'",(uid,target)).fetchone(): return self.send_json({"error":"Предложение уже отправлено"},409)
-                    db.execute("INSERT INTO exchanges(from_user,target_car_id,offered_car_id,message,created_at) VALUES(?,?,?,?,?)",(uid,target,offered,str(data.get("message", ""))[:500],now))
-                target_name=target_row["name"] if DATABASE_URL else target_row[1]; offered_name=offered_row["name"] if DATABASE_URL else offered_row[0]
-                threading.Thread(target=notify_exchange_user,args=(target_owner,f"🔄 Новое предложение обмена\n\nВам предлагают {offered_name} в обмен на {target_name}.\n\nОткройте КРУГ, чтобы посмотреть предложение."),daemon=True).start()
+                    db.execute("INSERT INTO exchanges(from_user,target_car_id,offered_car_id,message,offer_text,cash_amount,created_at) VALUES(?,?,?,?,?,?,?)",(uid,target,offered,clean_text(data.get("message"),500),offer_text,cash_amount,now))
+                target_name=target_row["name"] if DATABASE_URL else target_row[1]; offered_name=(offered_row["name"] if DATABASE_URL else offered_row[0]) if offered_row else offer_text
+                extra=f"\nДоплата: {cash_amount:,} ₽".replace(","," ") if cash_amount else ""
+                threading.Thread(target=notify_exchange_user,args=(target_owner,f"🔄 Новое предложение\n\nВам предлагают: {offered_name}\nЗа автомобиль: {target_name}{extra}\n\nОткройте КРУГ, чтобы посмотреть предложение."),daemon=True).start()
                 return self.send_json({"ok":True},201)
             return self.send_json({"error":"Маршрут не найден"},404)
-        except (ValueError,TypeError,json.JSONDecodeError,sqlite3.IntegrityError) as e: return self.send_json({"error":str(e)},400)
+        except (ValueError,json.JSONDecodeError) as exc: return self.send_json({"error":clean_text(exc,180) or "Проверьте данные"},400)
+        except (TypeError,sqlite3.IntegrityError): return self.send_json({"error":"Запрос содержит некорректные данные"},400)
+        except Exception as exc:
+            print(f"POST failed: {type(exc).__name__}")
+            return self.send_json({"error":"Внутренняя ошибка. Попробуйте позже"},500)
     def do_DELETE(self):
+        if not self.valid_request_target() or not self.require_rate("delete",40,60) or not self.require_origin(): return
         path=urlparse(self.path).path; uid,authenticated,_=auth_context(self.headers)
         if not self.require_auth(authenticated): return
         if path=="/api/account":
+            deleted_actor="deleted:"+hashlib.sha256((WEBHOOK_SECRET+":"+uid).encode("utf-8")).hexdigest()[:20]
             with connect() as db:
                 owned=db.execute("SELECT id FROM cars WHERE owner_id=?",(uid,)).fetchall(); car_ids=[int(r["id"] if DATABASE_URL else r[0]) for r in owned]
-                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,))
+                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,)); db.execute("DELETE FROM car_views WHERE viewer_id=?",(uid,)); db.execute("DELETE FROM staff_roles WHERE user_id=?",(uid,))
+                db.execute("UPDATE staff_roles SET created_by=? WHERE created_by=?",(deleted_actor,uid))
+                db.execute("UPDATE audit_log SET actor_id=? WHERE actor_id=?",(deleted_actor,uid))
+                db.execute("UPDATE audit_log SET target='' WHERE target=? OR target LIKE ?",(uid,uid+":%"))
                 for cid in car_ids: db.execute("DELETE FROM cars WHERE id=?",(cid,))
                 db.execute("DELETE FROM users WHERE id=?",(uid,))
+            record_audit(deleted_actor,"account_deleted")
             return self.send_json({"ok":True,"deleted":True})
+        if not self.require_consent(uid): return
+        exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
+        if exchange:
+            with connect() as db: cur=db.execute("DELETE FROM exchanges WHERE id=? AND from_user=? AND status='new'",(int(exchange.group(1)),uid))
+            if cur.rowcount: record_audit(uid,"exchange_cancelled",exchange.group(1))
+            return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
         if path=="/api/subscriptions":
-            with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind='urgent'",(uid,))
-            return self.send_json({"ok":True,"urgent":False})
+            kind=parse_qs(urlparse(self.path).query).get("kind",["urgent"])[0]
+            if kind not in {"urgent","search"}: return self.send_json({"error":"Неизвестный тип подписки"},400)
+            with connect() as db: db.execute("DELETE FROM subscriptions WHERE telegram_user=? AND kind=?",(uid,kind))
+            return self.send_json({"ok":True,kind:False})
         staff=re.fullmatch(r"/api/admin/staff/([^/]+)",path)
         if staff:
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
             target=staff.group(1)
             if target in ADMIN_IDS: return self.send_json({"error":"Нельзя удалить владельца"},400)
             with connect() as db: cur=db.execute("DELETE FROM staff_roles WHERE user_id=?",(target,))
+            if cur.rowcount: record_audit(uid,"staff_removed",target)
             return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
         m=re.fullmatch(r"/api/cars/(\d+)",path)
         if not m: return self.send_json({"error":"Маршрут не найден"},404)
         with connect() as db:
             cur=db.execute("UPDATE cars SET status='deleted',updated_at=? WHERE id=? AND owner_id=?",(NOW().isoformat(),int(m.group(1)),uid))
+        if cur.rowcount: record_audit(uid,"listing_deleted",m.group(1))
         return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
     def do_PUT(self):
         try:
+            if not self.valid_request_target() or not self.require_rate("put",80,60) or not self.require_origin(): return
             path=urlparse(self.path).path; data=self.read_json(); uid,authenticated,_=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
+            if not self.require_consent(uid): return
             moderation=re.fullmatch(r"/api/admin/reports/(\d+)",path)
             if moderation:
                 if not can_moderate(uid): return self.send_json({"error":"Доступ только для модератора"},403)
@@ -512,12 +842,13 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=?",(new_car_status,NOW().isoformat(),car_id))
                     db.execute("UPDATE reports SET status=? WHERE car_id=? AND status='new'",("approved" if action=="approve" else "blocked",car_id))
                 result="возвращено в каталог" if action=="approve" else "заблокировано"
+                record_audit(uid,"moderation_"+action,car_id)
                 threading.Thread(target=notify_exchange_user,args=(owner,f"Решение модерации: объявление «{car_name}» {result}."),daemon=True).start()
                 return self.send_json({"ok":True,"action":action,"car_status":new_car_status})
             if path=="/api/profile":
-                role="dealer" if data.get("role")=="dealer" else "private"; company=str(data.get("company") or "").strip()[:100]
-                if role=="dealer" and len(company)<2: return self.send_json({"error":"Укажите название компании"},400)
-                with connect() as db: cur=db.execute("UPDATE users SET role=?,company=?,updated_at=? WHERE id=?",(role,company,NOW().isoformat(),uid))
+                role="dealer_pending" if data.get("role")=="dealer" else "private"; company=clean_text(data.get("company"),100)
+                if role=="dealer_pending" and len(company)<2: return self.send_json({"error":"Укажите название компании"},400)
+                with connect() as db: cur=db.execute("UPDATE users SET role=?,company=?,dealer_verified=0,updated_at=? WHERE id=?",(role,company,NOW().isoformat(),uid))
                 return self.send_json({"ok":bool(cur.rowcount),"role":role,"company":company},200 if cur.rowcount else 404)
             exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
             if exchange:
@@ -537,33 +868,46 @@ class Handler(SimpleHTTPRequestHandler):
             m=re.fullmatch(r"/api/cars/(\d+)",path)
             if not m: return self.send_json({"error":"Маршрут не найден"},404)
             if data.get("action")=="edit":
-                name=str(data.get("name","")).strip(); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(data.get("km") or 0)
+                name=clean_text(data.get("name"),80); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(data.get("km") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
-                phone=str(data.get("phone","")).strip(); images=data.get("images") if isinstance(data.get("images"),list) else []
-                images=[str(x) for x in images[:8] if x]
-                if phone and len(re.sub(r"\D","",phone))<10: return self.send_json({"error":"Проверьте номер телефона"},400)
+                phone=normalize_phone(data.get("phone")); phone_public=int(bool(phone) and data.get("phone_public") is True); images=data.get("images") if isinstance(data.get("images"),list) else []
+                if phone and not phone_public: return self.send_json({"error":"Для публикации телефона нужно отдельное разрешение"},400)
                 with connect() as db: contact_user=db.execute("SELECT username FROM users WHERE id=?",(uid,)).fetchone()
                 contact_username=str(contact_user["username"] if DATABASE_URL else contact_user[0]) if contact_user else ""
                 if not phone and not contact_username: return self.send_json({"error":"Укажите телефон: в вашем Telegram нет публичного username"},400)
-                if any(not x.startswith("data:image/") for x in images) or sum(map(len,images))>9_000_000: return self.send_json({"error":"Фотографии слишком большие"},400)
+                if data.get("contact_consent") is not True or str(data.get("policy_version") or "")!=POLICY_VERSION: return self.send_json({"error":"Отдельно разрешите показывать контакт покупателям"},400)
+                images=validated_images([x for x in images if x])
                 image=images[0] if images else ""; images_json=json.dumps(images,ensure_ascii=False); thumbnail=str(data.get("thumbnail") or ""); transmission=str(data.get("transmission") or "")[:30]; body_type=str(data.get("body_type") or "")[:30]; drive=str(data.get("drive") or "")[:30]; vin=re.sub(r"[^A-HJ-NPR-Z0-9]","",str(data.get("vin") or "").upper())[:17]
-                if thumbnail and (not thumbnail.startswith("data:image/") or len(thumbnail)>350_000): return self.send_json({"error":"Обложка фотографии слишком большая"},400)
+                fuel,engine_volume,engine_power,color,owners_count=vehicle_specs(data)
+                if thumbnail: thumbnail=validated_image(thumbnail,250_000)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 cid=int(m.group(1)); old_price=None
                 with connect() as db:
                     old=db.execute("SELECT price FROM cars WHERE id=? AND owner_id=? AND status<>'deleted'",(cid,uid)).fetchone(); old_price=int(old["price"] if DATABASE_URL else old[0]) if old else None
-                    cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,vin=?,thumbnail=?,accept_exchange=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name[:80],price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),str(data.get("description", ""))[:2000],phone[:40],NOW().isoformat(),until,image,images_json,transmission,body_type,drive,vin,thumbnail,accept_exchange,cid,uid))
-                    if cur.rowcount: db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name[:80]),cid))
+                    cur=db.execute("""UPDATE cars SET name=?,price=?,year=?,km=?,type=?,urgent=?,description=?,phone=?,phone_public=?,contact_consent_at=?,consent_version=?,updated_at=?,urgent_until=?,image=?,images=?,transmission=?,body_type=?,drive=?,fuel=?,engine_volume=?,engine_power=?,color=?,owners_count=?,vin=?,thumbnail=?,accept_exchange=? WHERE id=? AND owner_id=? AND status<>'deleted'""",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,NOW().isoformat(),POLICY_VERSION,NOW().isoformat(),until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,cid,uid))
+                    if cur.rowcount: db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name),cid))
                     if cur.rowcount and old_price is not None and old_price!=price: db.execute("INSERT INTO price_history(car_id,old_price,new_price,changed_at) VALUES(?,?,?,?)",(cid,old_price,price,NOW().isoformat()))
                 if cur.rowcount and old_price is not None and price<old_price: threading.Thread(target=notify_price_drop,args=(cid,name[:80],old_price,price),daemon=True).start()
+                if cur.rowcount: record_audit(uid,"listing_edited",cid)
                 return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
             status={"archive":"archived","activate":"active","sold":"sold"}.get(data.get("action"))
             if not status: return self.send_json({"error":"Неизвестное действие"},400)
             with connect() as db: cur=db.execute("UPDATE cars SET status=?,updated_at=? WHERE id=? AND owner_id=? AND status IN ('active','archived','sold')",(status,NOW().isoformat(),int(m.group(1)),uid))
+            if cur.rowcount: record_audit(uid,"listing_status",f"{m.group(1)}:{status}")
             return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
-        except (ValueError,json.JSONDecodeError) as e: return self.send_json({"error":str(e)},400)
+        except (ValueError,json.JSONDecodeError) as exc: return self.send_json({"error":clean_text(exc,180) or "Проверьте данные"},400)
+        except Exception as exc:
+            print(f"PUT failed: {type(exc).__name__}")
+            return self.send_json({"error":"Внутренняя ошибка. Попробуйте позже"},500)
+
+class SecureHTTPServer(ThreadingHTTPServer):
+    daemon_threads=True
+    request_queue_size=128
 
 if __name__=="__main__":
-    port=int(os.environ.get("PORT","4173")); init_db(); threading.Thread(target=setup_telegram_webhook,daemon=True).start(); print(f"KRUG on {port}"); ThreadingHTTPServer(("0.0.0.0",port),Handler).serve_forever()
+    port=int(os.environ.get("PORT","4173")); init_db(); purge_expired_data()
+    if not BOT_TOKEN and not ALLOW_DEV_AUTH: print("WARNING: Telegram token is missing; all personal actions are disabled")
+    if not LEGAL_READY: print("WARNING: legal operator details or confirmed Russian data residency are missing; new consent cannot be collected")
+    threading.Thread(target=retention_loop,daemon=True).start(); threading.Thread(target=setup_telegram_webhook,daemon=True).start(); print(f"KRUG on {port}"); SecureHTTPServer(("0.0.0.0",port),Handler).serve_forever()
