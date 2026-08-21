@@ -18,6 +18,10 @@ services:
         value: "0"
       - key: BOT_TOKEN
         sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_TELEGRAM_IDS
+        sync: false
       - key: TELEGRAM_WEBHOOK_SECRET
         sync: false
       - key: LEGAL_OPERATOR_NAME
