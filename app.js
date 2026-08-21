@@ -219,7 +219,7 @@ async function krugJson(url,options={}){
   try{
     let response=await krugApi(url,options),data={};
     try{data=await response.json()}catch(_){data={}}
-    if(!response.ok){let message=data.error||(response.status===401?'Откройте КРУГ кнопкой внутри Telegram':'Сервер временно недоступен');let error=new Error(message);error.status=response.status;throw error}
+    if(!response.ok){let message=data.error||(response.status===401?'Откройте КРУГ кнопкой внутри Telegram':'Сервер временно недоступен');let error=new Error(message);error.status=response.status;error.code=data.code||'';throw error}
     return data;
   }catch(error){
     if(error.status===401)krugShowConnection(error.message);
@@ -284,7 +284,6 @@ const krugListingDataBeforeLegal=krugListingData;krugListingData=function(){if(!
 /* KRUG source block 17 */
 // KRUG v19: personal data export and protected account deletion.
 const krugProfileMenu=document.querySelector('#profile .menu-list');
-const krugDataButton=document.createElement('button');krugDataButton.className='menu-item';krugDataButton.innerHTML='Скачать мои данные <span>›</span>';krugDataButton.onclick=exportMyData;krugProfileMenu.append(krugDataButton);
 const krugDeleteButton=document.createElement('button');krugDeleteButton.className='menu-item';krugDeleteButton.style.color='#b42318';krugDeleteButton.innerHTML='Удалить аккаунт <span>›</span>';krugDeleteButton.onclick=deleteMyAccount;krugProfileMenu.append(krugDeleteButton);
 async function exportMyData(){
   try{let data=await krugJson('/api/export'),blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`krug-data-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Копия данных подготовлена')}
@@ -665,7 +664,7 @@ offerExchange=async function(){try{if(!krugOpenedDetail?.accept_exchange)return 
 async function sendKrugExchange(){if(krugExchangeSend.classList.contains('busy'))return;let offeredCarId=Number(exchangeOfferedCar.value)||0,offerText=exchangeOfferText.value.trim(),cashAmount=Number(exchangeCashAmount.value)||0;if(!offeredCarId&&offerText.length<3)return toast('Опишите, что вы предлагаете');if(cashAmount<0||cashAmount>100000000)return toast('Проверьте размер доплаты');krugExchangeSend.classList.add('busy');try{await krugJson('/api/exchanges',{method:'POST',body:JSON.stringify({target_car_id:Number(krugOpenedCar),offered_car_id:offeredCarId||null,offer_text:offerText,cash_amount:cashAmount,message:exchangeMessage.value.trim()})});closeKrugExchangeCompose();toast('Предложение отправлено продавцу');await krugLoadProfile()}catch(error){toast(error.message)}finally{krugExchangeSend.classList.remove('busy')}}
 krugExchangeSend.addEventListener('click',sendKrugExchange);
 function krugExchangeCard(item,incoming){let offeredImage=safeImageSrc(item.offered_image||hero),targetImage=safeImageSrc(item.target_image||hero),actions='',customOffer=!item.offered_car_id;if(item.status==='new')actions=incoming?`<div class="manage-actions"><button class="btn lime" onclick="answerExchange(${Number(item.id)},'accept')">Принять</button><button class="btn back" onclick="answerExchange(${Number(item.id)},'reject')">Отклонить</button></div>`:`<button class="exchange-cancel" onclick="cancelKrugExchange(${Number(item.id)})">Отменить предложение</button>`;let offered=customOffer?`<div class="exchange-custom-offer"><span>✦</span><b>Другое предложение</b><small>${safeText(item.offer_text||'Условия не указаны')}</small></div>`:`<div><img src="${offeredImage}" alt="${safeText(item.offered_name)}"><b>${safeText(item.offered_name||'Автомобиль')}</b><small>${item.offered_price?rub(Number(item.offered_price)):''}</small></div>`;return `<article class="exchange-card"><div class="exchange-direction"><span>${incoming?'Входящее':'Исходящее'}</span><b class="exchange-status ${safeText(item.status)}">${safeText(exchangeStatus[item.status]||item.status)}</b></div><div class="exchange-cars">${offered}<i>⇄</i><div><img src="${targetImage}" alt="${safeText(item.target_name)}"><b>${safeText(item.target_name)}</b><small>${item.target_price?rub(Number(item.target_price)):''}</small></div></div>${Number(item.cash_amount)>0?`<div class="exchange-cash">Доплата: <b>${rub(Number(item.cash_amount))}</b></div>`:''}${item.message?`<p>${safeText(item.message)}</p>`:''}${actions}</article>`}
-showExchanges=async function(){try{let list=await krugJson('/api/exchanges'),incoming=list.filter(item=>String(item.target_owner_id)===krugUserId),outgoing=list.filter(item=>String(item.target_owner_id)!==krugUserId);go('catalog');document.querySelector('#catalog .page-head h1').textContent='Предложения обмена';document.querySelector('#catalog .page-head p').textContent='Входящие и отправленные предложения';document.getElementById('catalogCards').innerHTML=`<div class="exchange-group"><h3>Входящие <span>${incoming.length}</span></h3>${incoming.map(item=>krugExchangeCard(item,true)).join('')||'<div class="panel"><p class="meta">Новых входящих предложений нет.</p></div>'}</div><div class="exchange-group"><h3>Исходящие <span>${outgoing.length}</span></h3>${outgoing.map(item=>krugExchangeCard(item,false)).join('')||'<div class="panel"><p class="meta">Вы пока ничего не предлагали.</p></div>'}</div>`;krugMoreButton?.classList.remove('show')}catch(error){toast(error.message)}};
+showExchanges=async function(){try{let list=await krugJson('/api/exchanges'),incoming=list.filter(item=>String(item.target_owner_id)===krugUserId),outgoing=list.filter(item=>String(item.target_owner_id)!==krugUserId);go('catalog');document.querySelector('#catalog .page-head h1').textContent='Предложения обмена';document.querySelector('#catalog .page-head p').textContent='Входящие и отправленные предложения';document.getElementById('catalogCards').innerHTML=`<div class="exchange-group"><h3>Входящие <span>${incoming.length}</span></h3>${incoming.map(item=>krugExchangeCard(item,true)).join('')||'<div class="panel"><p class="meta">Новых входящих предложений нет.</p></div>'}</div><div class="exchange-group"><h3>Исходящие <span>${outgoing.length}</span></h3>${outgoing.map(item=>krugExchangeCard(item,false)).join('')||'<div class="panel"><p class="meta">Вы пока ничего не предлагали.</p></div>'}</div>`;krugMoreButton?.classList.remove('show')}catch(error){if(error.code==='legal_setup_required')return showKrugExchangeSetup();toast(error.message)}};
 async function cancelKrugExchange(id){if(!confirm('Отменить предложение обмена?'))return;try{await krugJson(`/api/exchanges/${id}`,{method:'DELETE'});toast('Предложение отменено');await showExchanges();await krugLoadProfile()}catch(error){toast(error.message)}}
 if(profileButtons[1])profileButtons[1].onclick=showExchanges;
 const krugOpenBeforeExchangeUi=openCarV3;openCarV3=async function(...args){await krugOpenBeforeExchangeUi(...args);let button=document.querySelector('.sheet .exchange-action'),detail=krugOpenedDetail;if(button)button.hidden=!detail||detail.is_owner||!detail.accept_exchange};
@@ -735,6 +734,37 @@ krugLegalSetupBanner.addEventListener('click',openKrugReadiness);
 krugLegalSetupBanner.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openKrugReadiness()}});
 krugReadinessModal.querySelector('.readiness-close').addEventListener('click',closeKrugReadiness);
 krugReadinessModal.addEventListener('click',event=>{if(event.target===krugReadinessModal)closeKrugReadiness()});
+
+/* KRUG source block 53 */
+// Personal sections stay understandable while legally required production settings are incomplete.
+function showKrugPersonalUnavailable(title){
+  go('catalog');
+  document.querySelector('#catalog .page-head h1').textContent=title;
+  document.querySelector('#catalog .page-head p').textContent='Личный раздел КРУГ';
+  document.getElementById('catalogCards').innerHTML='<div class="panel personal-unavailable"><i>◇</i><h3>Раздел скоро станет доступен</h3><p>Функция уже готова. Сейчас завершается обязательная настройка оператора и хранения персональных данных в России.</p><button type="button" class="btn back" onclick="openKrugReadiness()">Посмотреть готовность</button><button type="button" class="personal-catalog-link" onclick="go(\'catalog\');krugLoadCars()">Вернуться к автомобилям</button></div>';
+  krugMoreButton?.classList.remove('show');
+}
+function showKrugExchangeSetup(){showKrugPersonalUnavailable('Предложения обмена')}
+async function krugPersonalReady(){try{return !!(await loadKrugLegalInfo()).ready}catch(_){return false}}
+const krugShowMyCarsWhenReady=showMyCars;
+showMyCars=async function(){if(!await krugPersonalReady())return showKrugPersonalUnavailable('Мои объявления');return krugShowMyCarsWhenReady()};
+const krugShowFavouritesWhenReady=showFavourites;
+showFavourites=async function(){if(!await krugPersonalReady())return showKrugPersonalUnavailable('Избранное');return krugShowFavouritesWhenReady()};
+const krugShowRecentWhenReady=showRecentlyViewed;
+showRecentlyViewed=async function(){if(!await krugPersonalReady())return showKrugPersonalUnavailable('Недавно просмотренные');return krugShowRecentWhenReady()};
+const krugShowExchangesWhenReady=showExchanges;
+showExchanges=async function(){if(!await krugPersonalReady())return showKrugExchangeSetup();return krugShowExchangesWhenReady()};
+const krugSaveFavouriteWhenReady=saveV2;
+saveV2=async function(event,button,id){if(!await krugPersonalReady()){event?.stopPropagation?.();showKrugPersonalUnavailable('Избранное');return}return krugSaveFavouriteWhenReady(event,button,id)};
+const krugOfferExchangeWhenReady=offerExchange;
+offerExchange=async function(){if(!await krugPersonalReady()){closeModal();return showKrugExchangeSetup()}return krugOfferExchangeWhenReady()};
+const krugSubscribeWhenReady=subscribe;
+subscribe=async function(button){if(!await krugPersonalReady()){openKrugReadiness();return}return krugSubscribeWhenReady(button)};
+if(profileButtons[0])profileButtons[0].onclick=showMyCars;
+if(profileButtons[1])profileButtons[1].onclick=showExchanges;
+if(profileButtons[2])profileButtons[2].onclick=showFavourites;
+krugRecentButton.onclick=showRecentlyViewed;
+krugGarageCta.onclick=showMyCars;
 
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
