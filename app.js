@@ -710,6 +710,32 @@ krugLoadProfile();
 const krugLegalSetupBanner=document.createElement('div');krugLegalSetupBanner.className='legal-setup-banner';krugLegalSetupBanner.innerHTML='<b>Каталог работает в режиме просмотра</b><span>Личные функции откроются после завершения настройки оператора и российского хранения данных.</span>';document.querySelector('#home .hero')?.after(krugLegalSetupBanner);
 loadKrugLegalInfo().then(info=>krugLegalSetupBanner.classList.toggle('show',!info.ready));
 
+/* KRUG source block 52 */
+// Launch-readiness details: explain safe browse mode without exposing credentials.
+krugLegalSetupBanner.setAttribute('role','button');
+krugLegalSetupBanner.setAttribute('tabindex','0');
+krugLegalSetupBanner.setAttribute('aria-label','Показать готовность запуска');
+krugLegalSetupBanner.insertAdjacentHTML('beforeend','<em>Посмотреть, что осталось настроить →</em>');
+const krugReadinessModal=document.createElement('div');
+krugReadinessModal.className='modal readiness-modal';
+krugReadinessModal.innerHTML='<div class="sheet readiness-sheet"><div class="grab"></div><div class="compare-head"><div><span class="eyebrow"><span class="dot"></span> центр запуска</span><h2>Готовность КРУГ</h2></div><button type="button" class="icon-btn readiness-close" aria-label="Закрыть">×</button></div><p class="readiness-intro">Каталог уже доступен. Для публикации объявлений и других личных функций необходимо выполнить обязательные настройки.</p><div class="readiness-list"></div><div class="readiness-note">Токен Telegram и пароль базы здесь никогда не показываются.</div></div>';
+document.body.append(krugReadinessModal);
+function krugReadinessRow(done,title,text){return `<div class="readiness-row ${done?'done':'pending'}"><i>${done?'✓':'!'}</i><div><b>${safeText(title)}</b><span>${safeText(text)}</span></div></div>`}
+async function openKrugReadiness(){
+  let list=krugReadinessModal.querySelector('.readiness-list');
+  list.innerHTML=krugReadinessRow(false,'Проверяем настройки','Получаем безопасный статус сервера…');
+  krugReadinessModal.classList.add('open');
+  try{
+    let info=await loadKrugLegalInfo(),operatorReady=!!info.operator_configured||!!(info.operator_name&&info.operator_email&&info.operator_address),storageReady=!!info.data_residency_rf;
+    list.innerHTML=krugReadinessRow(operatorReady,'Реквизиты оператора',operatorReady?'Название, адрес и контакт заполнены.':'Нужно указать настоящее имя/название оператора, адрес и электронную почту.')+krugReadinessRow(storageReady,'Хранение персональных данных в РФ',storageReady?'Российское размещение подтверждено.':'Нужно подключить базу на территории России и только затем подтвердить размещение.')+krugReadinessRow(!!info.ready,'Личные функции',info.ready?'Публикация, избранное, обмены и профиль доступны.':'Включатся автоматически после выполнения двух пунктов выше.');
+  }catch(_){list.innerHTML=krugReadinessRow(false,'Сервер не ответил','Повторите проверку немного позже.')}
+}
+function closeKrugReadiness(){krugReadinessModal.classList.remove('open')}
+krugLegalSetupBanner.addEventListener('click',openKrugReadiness);
+krugLegalSetupBanner.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openKrugReadiness()}});
+krugReadinessModal.querySelector('.readiness-close').addEventListener('click',closeKrugReadiness);
+krugReadinessModal.addEventListener('click',event=>{if(event.target===krugReadinessModal)closeKrugReadiness()});
+
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
 function krugThumbnailFromData(src){return new Promise(resolve=>{if(!src)return resolve('');let img=new Image();img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.6))};img.onerror=()=>resolve('');img.src=src})}
