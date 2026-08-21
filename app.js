@@ -669,3 +669,32 @@ showExchanges=async function(){try{let list=await krugJson('/api/exchanges'),inc
 async function cancelKrugExchange(id){if(!confirm('Отменить предложение обмена?'))return;try{await krugJson(`/api/exchanges/${id}`,{method:'DELETE'});toast('Предложение отменено');await showExchanges();await krugLoadProfile()}catch(error){toast(error.message)}}
 if(profileButtons[1])profileButtons[1].onclick=showExchanges;
 const krugOpenBeforeExchangeUi=openCarV3;openCarV3=async function(...args){await krugOpenBeforeExchangeUi(...args);let button=document.querySelector('.sheet .exchange-action'),detail=krugOpenedDetail;if(button)button.hidden=!detail||detail.is_owner||!detail.accept_exchange};
+
+/* KRUG source block 47 */
+// Reliable profile identity and bounded listing publication on slow mobile connections.
+krugLoadProfile=async function(){
+  try{
+    let d=await krugJson('/api/me'),p=document.querySelector('.profile-card');if(!p)return;
+    let telegramName=[krugTgUser?.first_name,krugTgUser?.last_name].filter(Boolean).join(' ').trim(),storedName=String(d.user?.first_name||'').trim(),name=telegramName||storedName||'Пользователь КРУГ';
+    p.querySelector('h2').textContent=name;p.querySelector('.avatar').textContent=name.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
+    p.querySelector('p').textContent=d.user?.role==='dealer'?`Дилер · ${d.user.company||'Компания'} · Екатеринбург`:'Частный продавец · Екатеринбург';
+    let stats=p.querySelectorAll('.stat b');if(stats[0])stats[0].textContent=Number(d.listings)||0;if(stats[1])stats[1].textContent=Number(d.favourites)||0;if(stats[2])stats[2].textContent=Number(d.views)||0;
+    krugProfileRole.textContent=d.user?.role==='dealer'?'Проверенный дилер':'Частный продавец';
+    if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${Number(d.offers)||0} ›</span>`;
+    let role=d.staff_role||'';krugAdminButton.classList.toggle('show',!!role);krugStaffButton.classList.toggle('show',role==='owner'||role==='admin');
+  }catch(error){console.warn('Profile refresh failed',error?.message||error)}
+};
+publish=async function(){
+  let button=document.querySelector('#create .step[data-step="3"] .btn.lime');if(!button||button.classList.contains('busy'))return;let data;
+  try{data=krugListingData()}catch(error){toast(error.message);return}
+  if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');
+  let editing=krugEditingId,defaultLabel=editing?'Сохранить изменения':'Опубликовать бесплатно',controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+  button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
+  try{
+    await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data),signal:controller.signal});
+    toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
+    setTimeout(()=>{editing?showMyCars():krugLoadCars()},50);
+  }catch(error){toast(error?.name==='AbortError'?'Слабое соединение: публикация заняла слишком много времени. Проверьте «Мои объявления» перед повторной отправкой.':error.message)}
+  finally{clearTimeout(timer);button.classList.remove('busy');button.textContent=defaultLabel}
+};
+krugLoadProfile();
