@@ -28,7 +28,7 @@
 .auto-filters{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:10px 0}.auto-filters select,.auto-filters button{min-width:0;border:1px solid #dde2dc;background:#fff;border-radius:14px;padding:11px 10px;font:inherit;color:#222}.auto-filters .filter-reset{color:#087b69;font-weight:700}.filter-result{font-size:13px;color:#69706b;margin:3px 2px 12px}
 
 /* KRUG style block 5 */
-.draft-note{display:none;margin:0 0 12px;padding:12px 14px;border-radius:15px;background:#e9f8ef;color:#155b36;font-size:13px}.draft-note.show{display:flex;align-items:center;justify-content:space-between;gap:10px}.draft-note button{border:0;background:none;color:#a22;font-weight:700}
+.draft-note{display:none;margin:0 16px 12px;padding:12px 14px;border:1px solid rgba(205,176,131,.28);border-radius:15px;background:linear-gradient(135deg,#20231f,#151715);color:#e8e1d7;font-size:12px}.draft-note.show{display:flex;align-items:center;justify-content:space-between;gap:10px}.draft-note span{display:grid;gap:3px}.draft-note b{color:var(--champagne-soft);font-size:12px}.draft-note small{color:#92958f;font-size:9px}.draft-note button{border:0;background:none;color:#c9a873;font-weight:700}
 
 /* KRUG style block 6 */
 .listing-insights{display:flex;gap:8px;margin:8px 0 14px}.listing-insights span{flex:1;padding:9px 10px;border-radius:12px;background:#edf1eb;color:#465048;font-size:12px;font-weight:700}
