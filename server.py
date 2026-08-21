@@ -139,10 +139,12 @@ def init_db():
         add_column(db,"subscriptions","name","TEXT DEFAULT ''")
         add_column(db,"exchanges","offer_text","TEXT DEFAULT ''")
         add_column(db,"exchanges","cash_amount","INTEGER NOT NULL DEFAULT 0")
+        add_column(db,"cars","publish_key","TEXT DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_car_views_viewer_created ON car_views(viewer_id,created_at)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_cars_owner_publish_key ON cars(owner_id,publish_key) WHERE publish_key IS NOT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_reports_car_status ON reports(car_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_search_key ON cars(search_key)")
         db.execute("UPDATE cars SET accept_exchange=1 WHERE type='Обмен' AND accept_exchange=0")
@@ -327,6 +329,7 @@ def retention_loop():
 
 def car_dict(row,faved=False):
     d=dict(row); until=d.get("urgent_until")
+    d.pop("publish_key",None)
     if d.get("urgent") and until:
         try:
             if datetime.fromisoformat(until)<NOW(): d["urgent"]=0; d["type"]="Продажа"
@@ -482,7 +485,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":22,"release":"v46"})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":23,"release":"v47"})
         if path=="/api/legal": return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":LEGAL_READY,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"
@@ -677,6 +680,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
                 name=clean_text(data.get("name"),80); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
+                publish_key=str(data.get("publish_key") or "").strip()
+                if publish_key and not re.fullmatch(r"[A-Za-z0-9_-]{16,80}",publish_key): return self.send_json({"error":"Некорректный идентификатор публикации"},400)
+                if publish_key:
+                    with connect() as db: existing=db.execute("SELECT id FROM cars WHERE owner_id=? AND publish_key=?",(uid,publish_key)).fetchone()
+                    if existing: return self.send_json({"ok":True,"id":existing["id"] if DATABASE_URL else existing[0],"duplicate":True},200)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
                 phone=normalize_phone(data.get("phone")); phone_public=int(bool(phone) and data.get("phone_public") is True)
@@ -693,7 +701,7 @@ class Handler(SimpleHTTPRequestHandler):
                 fuel,engine_volume,engine_power,color,owners_count=vehicle_specs(data)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key or None)); cid=cur.lastrowid
                     db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name),cid))
                 record_audit(uid,"listing_created",cid)
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()

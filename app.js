@@ -672,6 +672,12 @@ const krugOpenBeforeExchangeUi=openCarV3;openCarV3=async function(...args){await
 
 /* KRUG source block 47 */
 // Reliable profile identity and bounded listing publication on slow mobile connections.
+const KRUG_PENDING_PUBLISH='krug_pending_publish_v1';
+function krugPublishIdentity(data){
+  let fingerprint=JSON.stringify([data.name,data.year,data.price,data.km,data.phone||'',(data.images||[]).length]);
+  try{let saved=JSON.parse(localStorage.getItem(KRUG_PENDING_PUBLISH)||'null');if(saved?.fingerprint===fingerprint&&/^[A-Za-z0-9_-]{16,80}$/.test(saved.key))return saved.key}catch(_){}
+  let key=(crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g,'');localStorage.setItem(KRUG_PENDING_PUBLISH,JSON.stringify({fingerprint,key}));return key
+}
 krugLoadProfile=async function(){
   try{
     let d=await krugJson('/api/me'),p=document.querySelector('.profile-card');if(!p)return;
@@ -688,11 +694,12 @@ publish=async function(){
   let button=document.querySelector('#create .step[data-step="3"] .btn.lime');if(!button||button.classList.contains('busy'))return;let data;
   try{data=krugListingData()}catch(error){toast(error.message);return}
   if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');
+  if(!krugEditingId)data.publish_key=krugPublishIdentity(data);
   let editing=krugEditingId,defaultLabel=editing?'Сохранить изменения':'Опубликовать бесплатно',controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
   button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
   try{
     await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data),signal:controller.signal});
-    toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
+    if(!editing)localStorage.removeItem(KRUG_PENDING_PUBLISH);toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
     setTimeout(()=>{editing?showMyCars():krugLoadCars()},50);
   }catch(error){toast(error?.name==='AbortError'?'Слабое соединение: публикация заняла слишком много времени. Проверьте «Мои объявления» перед повторной отправкой.':error.message)}
   finally{clearTimeout(timer);button.classList.remove('busy');button.textContent=defaultLabel}
