@@ -485,7 +485,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":24,"release":"v48"})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":25,"release":"v49"})
         if path=="/api/legal": return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":LEGAL_READY,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"
