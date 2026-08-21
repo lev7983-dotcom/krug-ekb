@@ -796,6 +796,37 @@ async function openKrugTelegramListing(){
 }
 setTimeout(openKrugTelegramListing,850);
 
+/* KRUG source block 55 */
+// Local buyer checklist: practical deal safety without collecting personal data.
+const KRUG_BUYER_CHECKLIST='krug_buyer_checklist_v1';
+const krugChecklistItems=[
+  ['vin','Сверить VIN','Сравните VIN на кузове, в ПТС и СТС.'],
+  ['limits','Проверить ограничения','Проверьте залог, розыск, регистрационные ограничения и историю ДТП.'],
+  ['owner','Проверить продавца','Сверьте паспорт продавца с ПТС и правом распоряжаться автомобилем.'],
+  ['service','Провести диагностику','Осмотрите автомобиль на независимом сервисе до оплаты.'],
+  ['drive','Выполнить тест-драйв','Проверьте двигатель, коробку, тормоза, подвеску и электронику.'],
+  ['contract','Оформить сделку безопасно','Заполните договор, акт передачи и не переводите предоплату незнакомому человеку.']
+];
+let krugChecklistCar=0;
+const krugChecklistButton=document.createElement('button');krugChecklistButton.className='btn checklist-action';krugChecklistButton.textContent='✓ Проверка перед покупкой';document.querySelector('.sheet').insertBefore(krugChecklistButton,krugDetailFavourite);
+const krugChecklistModal=document.createElement('div');krugChecklistModal.className='modal checklist-modal';krugChecklistModal.innerHTML='<div class="sheet checklist-sheet"><div class="grab"></div><div class="compare-head"><div><span class="eyebrow"><span class="dot"></span> безопасная покупка</span><h2>Проверьте автомобиль</h2></div><button type="button" class="icon-btn checklist-close" aria-label="Закрыть">×</button></div><p class="checklist-caption"></p><div class="checklist-progress"><i></i><span></span></div><div class="checklist-items"></div><button type="button" class="checklist-reset">Сбросить отметки</button></div>';document.body.append(krugChecklistModal);
+function krugChecklistState(){try{return JSON.parse(localStorage.getItem(KRUG_BUYER_CHECKLIST)||'{}')}catch(_){return {}}}
+function saveKrugChecklistState(state){localStorage.setItem(KRUG_BUYER_CHECKLIST,JSON.stringify(state))}
+function paintKrugChecklist(){
+  let all=krugChecklistState(),done=new Set(Array.isArray(all[krugChecklistCar])?all[krugChecklistCar]:[]),count=done.size;
+  krugChecklistModal.querySelector('.checklist-caption').textContent=`${krugOpenedDetail?.name||'Автомобиль'} · ваш личный список`;
+  krugChecklistModal.querySelector('.checklist-progress i').style.width=`${Math.round(count/krugChecklistItems.length*100)}%`;
+  krugChecklistModal.querySelector('.checklist-progress span').textContent=`Выполнено ${count} из ${krugChecklistItems.length}`;
+  krugChecklistModal.querySelector('.checklist-items').innerHTML=krugChecklistItems.map(([key,title,text])=>`<button type="button" class="checklist-item ${done.has(key)?'done':''}" data-check-key="${key}"><i>${done.has(key)?'✓':''}</i><span><b>${title}</b><small>${text}</small></span></button>`).join('');
+}
+function openKrugChecklist(){if(!krugOpenedDetail?.id)return toast('Сначала откройте объявление');krugChecklistCar=Number(krugOpenedDetail.id);paintKrugChecklist();krugChecklistModal.classList.add('open')}
+function closeKrugChecklist(){krugChecklistModal.classList.remove('open')}
+krugChecklistButton.addEventListener('click',openKrugChecklist);
+krugChecklistModal.querySelector('.checklist-close').addEventListener('click',closeKrugChecklist);
+krugChecklistModal.addEventListener('click',event=>{if(event.target===krugChecklistModal)closeKrugChecklist()});
+krugChecklistModal.querySelector('.checklist-items').addEventListener('click',event=>{let button=event.target.closest('[data-check-key]');if(!button)return;let all=krugChecklistState(),items=new Set(Array.isArray(all[krugChecklistCar])?all[krugChecklistCar]:[]),key=button.dataset.checkKey;items.has(key)?items.delete(key):items.add(key);all[krugChecklistCar]=[...items];saveKrugChecklistState(all);paintKrugChecklist()});
+krugChecklistModal.querySelector('.checklist-reset').addEventListener('click',()=>{let all=krugChecklistState();delete all[krugChecklistCar];saveKrugChecklistState(all);paintKrugChecklist()});
+
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
 function krugThumbnailFromData(src){return new Promise(resolve=>{if(!src)return resolve('');let img=new Image();img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.6))};img.onerror=()=>resolve('');img.src=src})}
