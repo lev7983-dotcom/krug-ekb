@@ -766,6 +766,36 @@ if(profileButtons[2])profileButtons[2].onclick=showFavourites;
 krugRecentButton.onclick=showRecentlyViewed;
 krugGarageCta.onclick=showMyCars;
 
+/* KRUG source block 54 */
+// Telegram-native listing links open KRUG and the exact vehicle in one tap.
+const KRUG_BOT_USERNAME='Krug_ekb_bot';
+function krugTelegramListingUrl(id){return `https://t.me/${KRUG_BOT_USERNAME}?startapp=car_${Number(id)}`}
+function krugLinkedCarId(){
+  let query=new URLSearchParams(location.search),raw=window.Telegram?.WebApp?.initDataUnsafe?.start_param||query.get('tgWebAppStartParam')||query.get('startapp')||'';
+  let match=String(raw).match(/^car_(\d{1,12})$/);return Number(match?.[1]||query.get('car'))||0
+}
+krugListingUrl=function(id){return krugTelegramListingUrl(id)};
+shareOpenedCar=async function(){
+  let detail=krugOpenedDetail;if(!detail?.id)return toast('Сначала откройте объявление');
+  let url=krugTelegramListingUrl(detail.id),text=`${detail.name} — ${rub(detail.price)} · Екатеринбург`;
+  try{
+    let telegramShare=`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+    if(window.Telegram?.WebApp?.openTelegramLink){Telegram.WebApp.openTelegramLink(telegramShare);return}
+    if(navigator.share){await navigator.share({title:detail.name,text,url});return}
+    await navigator.clipboard.writeText(`${text}\n${url}`);toast('Ссылка на объявление скопирована');
+  }catch(error){if(error.name!=='AbortError')toast('Не удалось поделиться')}
+};
+async function openKrugTelegramListing(){
+  let id=krugLinkedCarId();if(!id||window.krugDeepLinkOpened===id)return;window.krugDeepLinkOpened=id;
+  try{
+    let detail=location.protocol==='file:'?cars.find(car=>Number(car.id)===id):await krugJson(`/api/cars/${id}`);
+    if(!detail)throw new Error('Объявление больше недоступно');
+    let known=cars.find(car=>Number(car.id)===id);if(!known)cars.unshift(detail);
+    go('catalog');await openCarV3(detail.id,detail.name,detail.price,detail.pos||'50% 50%',safeImageSrc(detail.image||detail.thumbnail||hero));
+  }catch(error){window.krugDeepLinkOpened=0;toast(error.message||'Не удалось открыть объявление')}
+}
+setTimeout(openKrugTelegramListing,850);
+
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
 function krugThumbnailFromData(src){return new Promise(resolve=>{if(!src)return resolve('');let img=new Image();img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.6))};img.onerror=()=>resolve('');img.src=src})}
