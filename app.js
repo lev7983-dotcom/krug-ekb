@@ -1001,6 +1001,22 @@ openCarV3=async function(...args){
 const krugContactBeforeRetry=contactSeller;
 contactSeller=function(){if(!krugOpenedDetail&&krugLastDetailArgs.length){toast('Повторяем загрузку…');return openCarV3(...krugLastDetailArgs)}return krugContactBeforeRetry()};
 const krugManageBeforeBusy=manageCar;
-manageCar=async function(id,action,button){if(button?.classList.contains('busy'))return;let label=button?.textContent||'';button?.classList.add('busy');if(button)button.textContent='Сохраняем…';try{return await krugManageBeforeBusy(id,action)}finally{button?.classList.remove('busy');if(button?.isConnected)button.textContent=label}};
+manageCar=async function(id,action,button){if(button?.classList.contains('busy'))return;let label=button?.textContent||'';button?.classList.add('busy');if(button)button.textContent='Сохраняем…';try{await krugJson(`/api/cars/${Number(id)}`,{method:'PUT',body:JSON.stringify({action})});toast(action==='archive'?'Объявление снято':'Объявление опубликовано');await krugLoadCars();await showMyCars()}catch(error){toast(error.message)}finally{button?.classList.remove('busy');if(button?.isConnected)button.textContent=label}};
 const krugAnswerBeforeBusy=answerExchange;
 answerExchange=async function(id,action,button){if(button?.classList.contains('busy'))return;let actions=button?.closest('.manage-actions'),buttons=actions?[...actions.querySelectorAll('button')]:[],labels=buttons.map(item=>item.textContent);buttons.forEach(item=>{item.disabled=true;item.classList.add('busy')});if(button)button.textContent='Обновляем…';try{return await krugAnswerBeforeBusy(id,action)}finally{buttons.forEach((item,index)=>{item.disabled=false;item.classList.remove('busy');if(item.isConnected)item.textContent=labels[index]})}};
+
+// One detail request fills the complete edit form; older feature wrappers no longer refetch it.
+editCar=async function(id){
+  if(!id||krugEditingId===-Number(id))return;
+  krugEditingId=-Number(id);go('create');nextStep(1);
+  const title=document.querySelector('#create .page-head h1'),submit=document.querySelector('#create .step[data-step="3"] .btn.lime');
+  title.textContent='Загружаем объявление…';submit.disabled=true;
+  try{
+    const d=await krugJson(`/api/cars/${Number(id)}`);if(krugEditingId!==-Number(id))return;krugEditingId=Number(id);
+    carName.value=d.name||'';carYear.value=d.year||'';carPrice.value=d.price||'';carKm.value=String(d.km||'').replace(/\D/g,'');carDescription.value=d.description||'';carPhone.value=d.phone||'';
+    carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||'';carFuel.value=d.fuel||'';carEngineVolume.value=Number(d.engine_volume)||'';carEnginePower.value=Number(d.engine_power)||'';carColor.value=d.color||'';carOwners.value=String(Math.min(Number(d.owners_count)||0,4));
+    krugImagesData=(d.images||[]).map(safeImageSrc);krugImageData=krugImagesData[0]||'';krugThumbnailData=d.thumbnail||d.image||'';krugRenderPhotoPreviews();
+    krugUrgentSwitch?.classList.toggle('on',!!d.urgent);krugExchangeSwitch?.classList.toggle('on',!!d.accept_exchange||d.type==='Обмен');document.querySelectorAll('.type-card').forEach(x=>x.classList.toggle('active',d.urgent?x.textContent.toLowerCase().includes('срочно'):d.type==='Обмен'?x.textContent.includes('Обмен'):x.textContent==='Продать'));
+    contactPublicInput.checked=!!d.contact_consent_at&&d.consent_version===KRUG_POLICY_VERSION;listingPrivacyInput.checked=krugPrivacyReady;legalAccepted.checked=true;paintContactHint();paintKrugListingQuality();title.textContent='Изменить объявление';submit.textContent='Сохранить изменения';
+  }catch(error){krugEditingId=0;title.textContent='Разместить авто';toast(error.message);setTimeout(showMyCars,300)}finally{submit.disabled=false}
+};
