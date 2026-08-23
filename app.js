@@ -23,7 +23,7 @@ function render(list,target){document.getElementById(target).innerHTML=list.map(
 function renderAll(){render(cars.slice(0,3),'homeCards');render(cars,'catalogCards');render(cars.filter(c=>c.urgent),'urgentCards')}
 queueMicrotask(()=>{if(location.protocol==='file:')renderAll();else ['homeCards','catalogCards','urgentCards'].forEach(id=>document.getElementById(id).innerHTML='<div class="catalog-skeleton" aria-label="Загружаем автомобили"><i></i><i></i><i></i></div>')});
 async function loadCars(){if(location.protocol==='file:')return;try{let r=await fetch('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll()}catch(e){toast('Сервер недоступен — показаны демо-данные')}}
-loadCars();
+// Catalogue startup is performed once by the final paginated loader below.
 function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.go===id));scrollTo(0,0)}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>go(b.dataset.go));
 function setMode(el,m){document.querySelectorAll('.mode').forEach(x=>x.classList.remove('active'));el.classList.add('active');mode=m;if(m==='Обмен'){go('catalog');render(cars.filter(c=>c.type==='Обмен'),'catalogCards')}}
@@ -74,7 +74,7 @@ function openCarV2(id,n,p,pos){krugOpenedCar=id;openCar(n,p,pos)}
 async function subscribe(b){if(location.protocol!=='file:')await krugApi('/api/subscriptions',{method:'POST',body:'{}'});b.textContent='✓ Вы подписаны';b.closest('.urgent-banner')?.classList.add('subscribed');toast('Подписка на срочные авто включена')}
 async function publish(){let active=document.querySelector('.type-card.active').textContent;let data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно')};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok){toast(d.error||'Проверьте данные');return}toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');await krugLoadCars();setTimeout(()=>go('catalog'),700)}
 async function krugLoadProfile(){let u=krugTgUser||{first_name:'Пользователь',username:''};await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});let r=await krugApi('/api/me'),d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.offers}
-krugLoadCars();
+// Avoid an obsolete unpaginated startup request; the final loader owns boot.
 
 /* KRUG source block 3 */
 let krugImageData='';
@@ -516,7 +516,7 @@ async function loadKrugCarPage(reset=false){
 }
 krugMoreButton.onclick=()=>loadKrugCarPage(false);
 krugLoadCars=async function(){await loadKrugCarPage(true)};
-loadKrugCarPage(true);
+// The final server-search loader below starts the catalogue once.
 
 /* KRUG source block 36 */
 // KRUG v38: daily unique public listing views.
@@ -537,7 +537,7 @@ const krugProfileStats=krugProfileCard.querySelectorAll('.stat');if(krugProfileS
 const krugGarageCta=document.createElement('button');krugGarageCta.className='profile-garage-cta';krugGarageCta.innerHTML='<b>Мой гараж</b><small>Управляйте автомобилями и объявлениями</small><span>›</span>';krugGarageCta.onclick=showMyCars;krugProfileCard.after(krugGarageCta);
 const krugSystemStatus=document.createElement('div');krugSystemStatus.className='profile-system-status checking';krugSystemStatus.innerHTML='<i></i><span>Проверяем соединение с КРУГ…</span>';krugGarageCta.after(krugSystemStatus);
 async function paintKrugSystemStatus(){try{let health=await krugJson('/api/health'),online=!!health.ok,telegram=!!health.telegram?.api_ok&&!!health.telegram?.webhook_ok;krugSystemStatus.className=`profile-system-status ${online&&telegram?'online':'warning'}`;krugSystemStatus.querySelector('span').textContent=`${health.release||'КРУГ'} · ${online?'сервер на связи':'сервер недоступен'} · ${telegram?'Telegram подключён':'Telegram проверяется'}`}catch(_){krugSystemStatus.className='profile-system-status warning';krugSystemStatus.querySelector('span').textContent='Нет связи с сервером · потяните экран для повтора'}}
-paintKrugSystemStatus();window.addEventListener('online',paintKrugSystemStatus);window.addEventListener('pageshow',paintKrugSystemStatus);
+paintKrugSystemStatus();window.addEventListener('online',paintKrugSystemStatus);window.addEventListener('pageshow',event=>{if(event.persisted)paintKrugSystemStatus()});
 const krugProfileIcons=['▰','⇄','♡','◌','◆','↓','×','!','♟'];document.querySelectorAll('#profile .menu-item').forEach((button,index)=>button.dataset.icon=krugProfileIcons[index]||'•');
 const krugLoadProfileBeforeLuxury=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeLuxury();try{let d=await krugJson('/api/me'),p=document.querySelector('.profile-card'),stats=p?.querySelectorAll('.stat b');if(stats?.[2])stats[2].textContent=Number(d.views)||0;krugProfileRole.textContent=d.user?.role==='dealer'?'Проверенный дилер':'Частный продавец'}catch(_){}};
 krugLoadProfile();
@@ -614,15 +614,22 @@ setTimeout(()=>loadKrugCarPage(true),0);
 
 // Keep the last public catalogue available through a brief connection loss.
 const krugOnlineCarPage=loadKrugCarPage;
+let krugCatalogueRequest=null,krugCatalogueRequestKey='',krugCatalogueRequestAt=0;
 loadKrugCarPage=async function(reset=false){
-  try{
-    await krugOnlineCarPage(reset);
-    if(reset&&cars.length&&krugFilterResult.textContent!=='Не удалось обновить каталог')krugSavePublicCatalog(cars,krugCatalogTotal);
-  }catch(error){throw error}
-  if(reset&&krugFilterResult.textContent==='Не удалось обновить каталог'){
-    let cached=krugReadPublicCatalog();
-    if(cached?.items.length){cars=cached.items;krugCatalogOffset=cars.length;krugCatalogHasMore=false;krugCatalogTotal=Number(cached.total)||cars.length;render(cars,'catalogCards');paintKrugMore();krugFilterResult.textContent='Показан сохранённый каталог · обновим при подключении'}
-  }
+  const requestKey=reset?krugServerCatalogueQuery(0):'';
+  if(reset&&krugCatalogueRequest&&requestKey===krugCatalogueRequestKey&&Date.now()-krugCatalogueRequestAt<1000)return krugCatalogueRequest;
+  const run=(async()=>{
+    try{
+      await krugOnlineCarPage(reset);
+      if(reset&&cars.length&&krugFilterResult.textContent!=='Не удалось обновить каталог')krugSavePublicCatalog(cars,krugCatalogTotal);
+    }catch(error){throw error}
+    if(reset&&krugFilterResult.textContent==='Не удалось обновить каталог'){
+      let cached=krugReadPublicCatalog();
+      if(cached?.items.length){cars=cached.items;krugCatalogOffset=cars.length;krugCatalogHasMore=false;krugCatalogTotal=Number(cached.total)||cars.length;render(cars,'catalogCards');paintKrugMore();krugFilterResult.textContent='Показан сохранённый каталог · обновим при подключении'}
+    }
+  })();
+  if(reset){krugCatalogueRequest=run;krugCatalogueRequestKey=requestKey;krugCatalogueRequestAt=Date.now()}
+  return await run
 };
 
 /* KRUG source block 42 */
@@ -637,8 +644,13 @@ const krugListingDataBeforePrivacy=krugListingData;krugListingData=function(){le
 const krugResetBeforePrivacy=krugResetListingForm;krugResetListingForm=function(){krugResetBeforePrivacy();contactPublicInput.checked=false;listingPrivacyInput.checked=krugPrivacyReady};
 const krugEditBeforePrivacy=editCar;editCar=async function(id){await krugEditBeforePrivacy(id);if(krugEditingId!==id)return;try{let d=await krugJson(`/api/cars/${id}`);contactPublicInput.checked=!!d.contact_consent_at&&d.consent_version===KRUG_POLICY_VERSION;listingPrivacyInput.checked=krugPrivacyReady}catch(_){contactPublicInput.checked=false}};
 paintContactHint=function(){let username=krugTgUser?.username||'',hasPhone=carPhone.value.replace(/\D/g,'').length>=10;if(username||hasPhone){krugContactHint.className='contact-hint ok';krugContactHint.textContent='Контакт не попадёт в каталог. Он откроется только вошедшему пользователю после вашего отдельного согласия.'}else{krugContactHint.className='contact-hint';krugContactHint.textContent='Укажите телефон — в вашем Telegram нет публичного username'}};paintContactHint();
-let krugLegalInfo={};
-async function loadKrugLegalInfo(){try{let r=await krugApi('/api/legal',{headers:{'Accept':'application/json'}});krugLegalInfo=await r.json();let name=krugLegalInfo.operator_name||'реквизиты ещё не заполнены',email=krugLegalInfo.operator_email||'контакт ещё не указан',address=krugLegalInfo.operator_address||'адрес ещё не указан';privacyOperatorText.textContent=krugLegalInfo.testing_mode?'КРУГ работает в публичном тестовом режиме. Не публикуйте чужие персональные данные, документы и фотографии без разрешения.':krugLegalInfo.closed_beta?'Вы входите в закрытую тестовую группу КРУГ. Не публикуйте чужие персональные данные и документы.':krugLegalInfo.ready?`Оператор: ${name}. Адрес: ${address}. Контакт: ${email}. Первичное хранение данных в РФ подтверждено.`:'Сбор персональных данных отключён, пока владелец не укажет реквизиты и не подтвердит хранение базы в РФ.';return krugLegalInfo}catch(_){privacyOperatorText.textContent='Не удалось проверить юридические настройки сервиса.';return {ready:false}}}
+let krugLegalInfo={},krugLegalLoadedAt=0,krugLegalRequest=null;
+async function loadKrugLegalInfo(){
+  if(krugLegalRequest)return krugLegalRequest;
+  if(krugLegalLoadedAt&&Date.now()-krugLegalLoadedAt<5000)return krugLegalInfo;
+  krugLegalRequest=(async()=>{try{let r=await krugApi('/api/legal',{headers:{'Accept':'application/json'}});krugLegalInfo=await r.json();krugLegalLoadedAt=Date.now();let name=krugLegalInfo.operator_name||'реквизиты ещё не заполнены',email=krugLegalInfo.operator_email||'контакт ещё не указан',address=krugLegalInfo.operator_address||'адрес ещё не указан';privacyOperatorText.textContent=krugLegalInfo.testing_mode?'КРУГ работает в публичном тестовом режиме. Не публикуйте чужие персональные данные, документы и фотографии без разрешения.':krugLegalInfo.closed_beta?'Вы входите в закрытую тестовую группу КРУГ. Не публикуйте чужие персональные данные и документы.':krugLegalInfo.ready?`Оператор: ${name}. Адрес: ${address}. Контакт: ${email}. Первичное хранение данных в РФ подтверждено.`:'Сбор персональных данных отключён, пока владелец не укажет реквизиты и не подтвердит хранение базы в РФ.';return krugLegalInfo}catch(_){privacyOperatorText.textContent='Не удалось проверить юридические настройки сервиса.';return {ready:false}}})();
+  try{return await krugLegalRequest}finally{krugLegalRequest=null}
+}
 function paintLegalOperator(){let name=document.getElementById('legalOperatorName'),email=document.getElementById('legalOperatorEmail'),address=document.getElementById('legalOperatorAddress');if(name)name.textContent=krugLegalInfo.operator_name||'не указан';if(email)email.textContent=krugLegalInfo.operator_email||'не указан';if(address)address.textContent=krugLegalInfo.operator_address||'не указан'}
 const openLegalBeforeSecurity=openLegal;openLegal=function(kind){openLegalBeforeSecurity(kind);paintLegalOperator()};
 async function acceptKrugPrivacy(){if(!privacyPolicyChoice.checked||!privacyRulesChoice.checked){privacyGateStatus.textContent='Нужно отдельно отметить оба пункта.';return}let legal=await loadKrugLegalInfo();if(!legal.ready){privacyGateStatus.textContent='Владелец ещё не завершил обязательную юридическую настройку.';return}privacyAcceptButton.classList.add('busy');try{let u=krugTgUser||{first_name:'Пользователь',username:''};await krugJson('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||'',privacy_consent:true,policy_version:KRUG_POLICY_VERSION,rules_accepted:true,rules_version:KRUG_POLICY_VERSION})});localStorage.setItem('krug_privacy_version',KRUG_POLICY_VERSION);localStorage.setItem('krug_rules_version',KRUG_POLICY_VERSION);krugPrivacyReady=true;listingPrivacyInput.checked=true;privacyGate.classList.remove('open');await krugLoadProfile();toast('Настройки конфиденциальности сохранены')}catch(error){privacyGateStatus.textContent=error.message}finally{privacyAcceptButton.classList.remove('busy')}}
