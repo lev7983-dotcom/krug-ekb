@@ -13,12 +13,15 @@ let cars=[
  {name:'Ford Focus',price:290000,year:2007,km:'181 000 км',type:'Обмен',urgent:false,pos:'23% 50%'},
  {name:'ВАЗ 2114',price:95000,year:2008,km:'210 000 км',type:'Срочно',urgent:true,pos:'48% 50%'}
 ];
+// Demo cars are only for the local design preview. On the live app they looked
+// like real listings for a moment, but had id=0 and therefore could not open.
+if(location.protocol!=='file:')cars=[];
 let mode='Все';
 const rub=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
 function card(c){return `<article class="car" onclick="openCar('${c.name}',${c.price},'${c.pos}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart" onclick="save(event,this)">♡</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">Проверен VIN</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 function render(list,target){document.getElementById(target).innerHTML=list.map(card).join('')||'<div class="panel"><h3>Здесь пока пусто</h3><p class="meta">Попробуйте другой диапазон цены.</p></div>'}
 function renderAll(){render(cars.slice(0,3),'homeCards');render(cars,'catalogCards');render(cars.filter(c=>c.urgent),'urgentCards')}
-queueMicrotask(()=>renderAll());
+queueMicrotask(()=>{if(location.protocol==='file:')renderAll();else ['homeCards','catalogCards','urgentCards'].forEach(id=>document.getElementById(id).innerHTML='<div class="catalog-skeleton" aria-label="Загружаем автомобили"><i></i><i></i><i></i></div>')});
 async function loadCars(){if(location.protocol==='file:')return;try{let r=await fetch('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll()}catch(e){toast('Сервер недоступен — показаны демо-данные')}}
 loadCars();
 function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.go===id));scrollTo(0,0)}
