@@ -45,6 +45,8 @@ const krugReadRequests=new Map();
 const krugSessionRequests=new Map();
 const krugApi=(url,options={})=>{
   let request={...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}},method=String(options.method||'GET').toUpperCase();
+  let personal=/^\/api\/(?:session|me|subscriptions|favourites|recent|my-cars|exchanges|admin(?:\/|$))/.test(url)||/^\/api\/cars\/\d+\/(?:favourite|report)$/.test(url);
+  if(!krugInitData&&location.protocol!=='file:'&&personal)return Promise.resolve(new Response(JSON.stringify({error:'Откройте КРУГ внутри Telegram',code:'telegram_required'}),{status:401,headers:{'Content-Type':'application/json'}}));
   if(method==='POST'&&url==='/api/session'){
     let key=String(options.body||''),cached=krugSessionRequests.get(key),now=Date.now();
     if(!cached||now-cached.created>2000){cached={created:now,promise:fetch(url,request)};krugSessionRequests.set(key,cached)}
@@ -696,6 +698,7 @@ function krugPublishIdentity(data){
 krugLoadProfile=async function(){
   try{
     let p=document.querySelector('.profile-card');if(!p)return;
+    if(!krugInitData&&location.protocol!=='file:'){p.querySelector('h2').textContent='Гостевой просмотр';p.querySelector('.avatar').textContent='К';p.querySelector('p').textContent='Откройте КРУГ внутри Telegram для входа';p.querySelectorAll('.stat b').forEach(value=>value.textContent='0');return}
     let telegramName=[krugTgUser?.first_name,krugTgUser?.last_name].filter(Boolean).join(' ').trim(),initialName=telegramName||'Пользователь КРУГ';p.querySelector('h2').textContent=initialName;p.querySelector('.avatar').textContent=initialName.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
     let d=await krugJson('/api/me'),storedName=String(d.user?.first_name||'').trim(),name=telegramName||storedName||initialName;
     p.querySelector('h2').textContent=name;p.querySelector('.avatar').textContent=name.split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase();
@@ -924,3 +927,13 @@ document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if(kr
 function krugThumbnailFromData(src){return new Promise(resolve=>{if(!src)return resolve('');let img=new Image();img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.6))};img.onerror=()=>resolve('');img.src=src})}
 photoPreviews.addEventListener('click',async event=>{let button=event.target.closest('[data-remove-photo]'),item=event.target.closest('[data-photo-index]'),index=Number(button?.dataset.removePhoto??item?.dataset.photoIndex);if(!Number.isInteger(index)||index<0||index>=krugImagesData.length)return;if(button){krugImagesData.splice(index,1);toast('Фотография удалена')}else if(index>0){let [cover]=krugImagesData.splice(index,1);krugImagesData.unshift(cover);toast('Обложка изменена')}else return;krugImageData=krugImagesData[0]||'';krugThumbnailData=await krugThumbnailFromData(krugImageData);krugRenderPhotoPreviews();carImage.value=''});
 const krugEditBeforePhotoManager=editCar;editCar=async function(id){await krugEditBeforePhotoManager(id);if(krugEditingId===id)krugRenderPhotoPreviews()};
+
+/* KRUG source block 60 */
+// Public web preview never impersonates a demo Telegram user.
+if(!krugInitData&&location.protocol!=='file:'){
+  let profile=document.querySelector('#profile .profile-card'),stats=profile?.querySelectorAll('.stat b');
+  if(profile){profile.querySelector('.avatar').textContent='К';profile.querySelector('h2').textContent='Гостевой просмотр';profile.querySelector('p').textContent='Откройте КРУГ внутри Telegram для входа';}
+  stats?.forEach(value=>value.textContent='0');
+  if(krugVerified)krugVerified.innerHTML='<i>↗</i><span>Вход выполняется безопасно через Telegram</span>';
+  if(krugProfileRole)krugProfileRole.textContent='Публичный каталог';
+}
