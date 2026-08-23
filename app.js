@@ -47,7 +47,7 @@ const krugApi=(url,options={})=>{
   if(method!=='GET'){krugReadRequests.clear();return fetch(url,request)}
   if(url!=='/api/me')return fetch(url,request);
   let cached=krugReadRequests.get(url),now=Date.now();
-  if(!cached||now-cached.created>400){cached={created:now,promise:fetch(url,request)};krugReadRequests.set(url,cached)}
+  if(!cached||now-cached.created>2000){cached={created:now,promise:fetch(url,request)};krugReadRequests.set(url,cached)}
   return cached.promise.then(response=>response.clone());
 };
 function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
