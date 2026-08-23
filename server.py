@@ -17,7 +17,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v90"
+APP_RELEASE="v91"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -514,7 +514,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60,uid if authenticated else ""): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":66,"release":APP_RELEASE,"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":67,"release":APP_RELEASE,"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -670,7 +670,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
     def do_POST(self):
         try:
-            if not self.valid_request_target() or not self.require_rate("post",120,60): return
+            if not self.valid_request_target() or not self.require_rate("post_ip",600,60): return
             path=urlparse(self.path).path; is_webhook=bool(BOT_TOKEN and path=="/api/telegram/webhook")
             if not is_webhook and not self.require_origin(): return
             data=self.read_json(); now=NOW().isoformat()
@@ -682,6 +682,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok":True})
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
+            if not self.require_rate("post",120,60,uid): return
             if path=="/api/session":
                 if not personal_ready(uid): return self.send_json({"error":"Сбор персональных данных доступен только закрытой тестовой группе до завершения юридической настройки","code":"legal_setup_required"},503)
                 already=has_current_consent(uid)
@@ -829,9 +830,10 @@ class Handler(SimpleHTTPRequestHandler):
             print(f"POST failed: {type(exc).__name__}")
             return self.send_json({"error":"Внутренняя ошибка. Попробуйте позже"},500)
     def do_DELETE(self):
-        if not self.valid_request_target() or not self.require_rate("delete",40,60) or not self.require_origin(): return
+        if not self.valid_request_target() or not self.require_rate("delete_ip",200,60) or not self.require_origin(): return
         path=urlparse(self.path).path; uid,authenticated,_=auth_context(self.headers)
         if not self.require_auth(authenticated): return
+        if not self.require_rate("delete",40,60,uid): return
         if path=="/api/account":
             deleted_actor="deleted:"+hashlib.sha256((WEBHOOK_SECRET+":"+uid).encode("utf-8")).hexdigest()[:20]
             with connect() as db:
@@ -871,9 +873,10 @@ class Handler(SimpleHTTPRequestHandler):
         return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 403)
     def do_PUT(self):
         try:
-            if not self.valid_request_target() or not self.require_rate("put",80,60) or not self.require_origin(): return
+            if not self.valid_request_target() or not self.require_rate("put_ip",400,60) or not self.require_origin(): return
             path=urlparse(self.path).path; data=self.read_json(); uid,authenticated,_=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
+            if not self.require_rate("put",80,60,uid): return
             if not self.require_consent(uid): return
             moderation=re.fullmatch(r"/api/admin/reports/(\d+)",path)
             if moderation:
