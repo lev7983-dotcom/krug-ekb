@@ -253,6 +253,7 @@ async function krugJson(url,options={}){
 if(location.protocol!=='file:'&&!krugInitData)krugShowConnection('Просмотр доступен. Для избранного и публикации откройте КРУГ внутри Telegram.');
 window.addEventListener('offline',()=>krugShowConnection('Нет подключения к интернету. Данные сохранятся после восстановления связи.'));
 window.addEventListener('online',()=>{toast('Соединение восстановлено');krugLoadCars()});
+document.querySelector('.city')?.addEventListener('click',()=>toast('КРУГ пока работает только в Екатеринбурге'));
 async function saveV2(e,b,id){
   e.stopPropagation();if(!id||b.classList.contains('busy'))return;b.classList.add('busy');
   try{let d=await krugJson(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),c=cars.find(x=>Number(x.id)===Number(id));if(c)c.favourite=!!d.favourite;b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');await krugLoadProfile()}
