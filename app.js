@@ -964,5 +964,7 @@ if(!krugInitData&&location.protocol!=='file:'){
   if(krugProfileRole)krugProfileRole.textContent='Публичный каталог';
 }
 window.addEventListener('pageshow',()=>setTimeout(()=>{if(!krugEditingId){restoreKrugDraft(true);restoreKrugDraftDealSwitches();paintKrugListingQuality()}},0),{once:true});
+// One fallback for every dynamically created image: catalogue, gallery, compare and exchanges.
+document.addEventListener('error',event=>{let image=event.target;if(!(image instanceof HTMLImageElement)||image.dataset.krugFallback==='1')return;image.dataset.krugFallback='1';image.src=hero;image.alt=image.alt||'Фотография автомобиля'},true);
 document.querySelector('#create').addEventListener('focusin',event=>event.target.closest('.field')?.classList.add('typing'));
 document.querySelector('#create').addEventListener('focusout',event=>event.target.closest('.field')?.classList.remove('typing'));
