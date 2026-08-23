@@ -706,7 +706,7 @@ krugLoadProfile=async function(){
     let stats=p.querySelectorAll('.stat b');if(stats[0])stats[0].textContent=Number(d.listings)||0;if(stats[1])stats[1].textContent=Number(d.favourites)||0;if(stats[2])stats[2].textContent=Number(d.views)||0;
     krugProfileRole.textContent=d.user?.role==='dealer'?'Проверенный дилер':'Частный продавец';
     if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${Number(d.offers)||0} ›</span>`;
-    let role=d.staff_role||'';krugAdminButton.classList.toggle('show',!!role);krugStaffButton.classList.toggle('show',role==='owner'||role==='admin');
+    let role=d.staff_role||'',pending=Number(d.moderation_pending)||0;krugAdminButton.classList.toggle('show',!!role);krugAdminButton.innerHTML=`Модерация жалоб <span>${pending?`${pending} новых`:'›'}</span>`;krugStaffButton.classList.toggle('show',role==='owner'||role==='admin');
   }catch(error){console.warn('Profile refresh failed',error?.message||error)}
 };
 publish=async function(){

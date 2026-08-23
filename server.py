@@ -506,7 +506,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":55,"release":"v79","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":56,"release":"v80","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -602,8 +602,12 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth(authenticated): return
             with connect() as db:
                 u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); vr=db.execute("SELECT COUNT(*) AS count FROM car_views v JOIN cars c ON c.id=v.car_id WHERE c.owner_id=? AND c.status<>'deleted'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]; views=vr["count"] if DATABASE_URL else vr[0]
-            role=staff_role(uid)
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"views":views,"admin":role in {"owner","admin"},"staff_role":role})
+            role=staff_role(uid); moderation_pending=0
+            if role in {"owner","admin","moderator"}:
+                with connect() as db:
+                    pending_row=db.execute("SELECT COUNT(*) AS count FROM reports WHERE status='new'").fetchone()
+                    moderation_pending=pending_row["count"] if DATABASE_URL else pending_row[0]
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"views":views,"admin":role in {"owner","admin"},"staff_role":role,"moderation_pending":moderation_pending})
         if path=="/api/admin/staff":
             if not self.require_auth(authenticated): return
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
