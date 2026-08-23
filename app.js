@@ -672,6 +672,7 @@ const krugOpenBeforeExchangeUi=openCarV3;openCarV3=async function(...args){await
 /* KRUG source block 47 */
 // Reliable profile identity and bounded listing publication on slow mobile connections.
 const KRUG_PENDING_PUBLISH='krug_pending_publish_v1';
+const krugPublishStatus=document.createElement('div');krugPublishStatus.className='publish-status';krugPublishStatus.setAttribute('role','status');krugPublishStatus.setAttribute('aria-live','polite');document.querySelector('#create .step[data-step="3"] .btn.lime')?.after(krugPublishStatus);
 function krugPublishIdentity(data){
   let fingerprint=JSON.stringify([data.name,data.year,data.price,data.km,data.phone||'',(data.images||[]).length]);
   try{let saved=JSON.parse(localStorage.getItem(KRUG_PENDING_PUBLISH)||'null');if(saved?.fingerprint===fingerprint&&/^[A-Za-z0-9_-]{16,80}$/.test(saved.key))return saved.key}catch(_){}
@@ -694,15 +695,17 @@ publish=async function(){
   let button=document.querySelector('#create .step[data-step="3"] .btn.lime');if(!button||button.classList.contains('busy'))return;let data;
   try{data=krugListingData()}catch(error){toast(error.message);return}
   if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');
+  if(navigator.onLine===false){krugPublishStatus.textContent='Нет подключения к интернету. Данные формы сохранены — попробуйте снова после подключения.';return toast('Нет подключения к интернету')}
   if(!krugEditingId)data.publish_key=krugPublishIdentity(data);
-  let editing=krugEditingId,defaultLabel=editing?'Сохранить изменения':'Опубликовать бесплатно',controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
+  let editing=krugEditingId,defaultLabel=editing?'Сохранить изменения':'Опубликовать бесплатно',controller=new AbortController(),seconds=0,timer=setTimeout(()=>controller.abort(),35000),ticker=setInterval(()=>{seconds+=1;krugPublishStatus.textContent=seconds<8?'Защищённо передаём данные…':seconds<20?'Загружаем фотографии — это может занять немного времени…':'Соединение медленное, продолжаем попытку…'},1000);
   button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
+  krugPublishStatus.className='publish-status working';krugPublishStatus.textContent=editing?'Сохраняем изменения…':'Проверяем и публикуем объявление…';
   try{
     await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data),signal:controller.signal});
-    if(!editing)localStorage.removeItem(KRUG_PENDING_PUBLISH);toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
+    if(!editing)localStorage.removeItem(KRUG_PENDING_PUBLISH);krugPublishStatus.className='publish-status success';krugPublishStatus.textContent=editing?'✓ Изменения сохранены':'✓ Объявление опубликовано';toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
     setTimeout(()=>{editing?showMyCars():krugLoadCars()},50);
-  }catch(error){toast(error?.name==='AbortError'?'Слабое соединение: публикация заняла слишком много времени. Проверьте «Мои объявления» перед повторной отправкой.':error.message)}
-  finally{clearTimeout(timer);button.classList.remove('busy');button.textContent=defaultLabel}
+  }catch(error){let message=error?.name==='AbortError'?'Сервер долго не отвечает. Форма сохранена — проверьте «Мои объявления» и попробуйте снова.':error.message;krugPublishStatus.className='publish-status error';krugPublishStatus.textContent=message;toast(message)}
+  finally{clearTimeout(timer);clearInterval(ticker);button.classList.remove('busy');button.textContent=defaultLabel}
 };
 krugLoadProfile();
 
@@ -853,6 +856,53 @@ document.querySelectorAll('#create input,#create textarea,#create select').forEa
 new MutationObserver(paintKrugListingQuality).observe(photoPreviews,{childList:true,subtree:true});
 const krugNextStepBeforeQuality=nextStep;nextStep=function(step){let result=krugNextStepBeforeQuality(step);paintKrugListingQuality();return result};
 paintKrugListingQuality();
+
+/* KRUG source block 57 */
+// Native report flow: clear reasons, optional comment and no browser prompt dialogs.
+const krugReportOptions=[
+  ['fraud','Подозрение на мошенничество','Просят предоплату, скрывают документы или вводят в заблуждение'],
+  ['wrong_info','Неверные данные','Цена, характеристики, фотографии или описание не соответствуют автомобилю'],
+  ['sold','Автомобиль уже продан','Объявление больше не актуально'],
+  ['duplicate','Повторное объявление','Этот автомобиль опубликован несколько раз'],
+  ['other','Другая причина','Опишите проблему в комментарии']
+];
+const krugReportModal=document.createElement('div');krugReportModal.className='modal report-modal';krugReportModal.innerHTML=`<div class="sheet report-sheet"><div class="grab"></div><div class="compare-head"><div><span class="eyebrow"><span class="dot"></span> помощь модерации</span><h2>Что не так с объявлением?</h2></div><button type="button" class="icon-btn report-close" aria-label="Закрыть">×</button></div><p class="report-caption">Жалоба не показывается продавцу. Модератор проверит объявление.</p><div class="report-reasons">${krugReportOptions.map(([key,title,text],index)=>`<label class="report-reason"><input type="radio" name="krug-report-reason" value="${key}" ${index===0?'checked':''}><i></i><span><b>${title}</b><small>${text}</small></span></label>`).join('')}</div><label class="field report-details"><span>Комментарий <small>необязательно</small></span><textarea maxlength="500" placeholder="Коротко опишите, что заметили"></textarea><em>0 / 500</em></label><button type="button" class="btn lime report-submit">Отправить жалобу</button></div>`;document.body.append(krugReportModal);
+function closeKrugReport(){krugReportModal.classList.remove('open')}
+function openKrugReport(){if(!krugOpenedDetail||krugOpenedDetail.is_owner)return toast('Это ваше объявление');krugReportModal.querySelector('textarea').value='';krugReportModal.querySelector('.report-details em').textContent='0 / 500';krugReportModal.querySelector('input[value="fraud"]').checked=true;krugReportModal.querySelector('.report-submit').disabled=false;krugReportModal.querySelector('.report-submit').textContent='Отправить жалобу';krugReportModal.classList.add('open')}
+async function submitKrugReport(){
+  let submit=krugReportModal.querySelector('.report-submit'),reason=krugReportModal.querySelector('input[name="krug-report-reason"]:checked')?.value,details=krugReportModal.querySelector('textarea').value.trim();
+  if(!reason)return toast('Выберите причину');submit.disabled=true;submit.textContent='Отправляем…';
+  try{let r=await krugApi(`/api/cars/${krugOpenedCar}/report`,{method:'POST',body:JSON.stringify({reason,details})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Не удалось отправить жалобу');reportButton.disabled=true;reportButton.textContent='✓ Жалоба отправлена';closeKrugReport();toast(d.under_review?'Объявление отправлено на проверку':'Спасибо, мы проверим объявление')}
+  catch(error){submit.disabled=false;submit.textContent='Отправить жалобу';toast(error.message)}
+}
+reportButton.onclick=openKrugReport;
+krugReportModal.querySelector('.report-close').addEventListener('click',closeKrugReport);
+krugReportModal.addEventListener('click',event=>{if(event.target===krugReportModal)closeKrugReport()});
+krugReportModal.querySelector('textarea').addEventListener('input',event=>{krugReportModal.querySelector('.report-details em').textContent=`${event.target.value.length} / 500`});
+krugReportModal.querySelector('.report-submit').addEventListener('click',submitKrugReport);
+
+/* KRUG source block 58 */
+// Account deletion uses an explicit in-app confirmation instead of a browser prompt.
+const krugDeleteModal=document.createElement('div');krugDeleteModal.className='modal delete-account-modal';krugDeleteModal.innerHTML='<div class="sheet delete-account-sheet"><div class="grab"></div><div class="compare-head"><div><span class="eyebrow"><span class="dot"></span> управление профилем</span><h2>Удалить аккаунт?</h2></div><button type="button" class="icon-btn delete-account-close" aria-label="Закрыть">×</button></div><p>Будут удалены профиль, объявления, избранное, подписки и предложения обмена. Отменить это действие будет нельзя.</p><label class="field"><span>Для подтверждения напишите <b>УДАЛИТЬ</b></span><input autocomplete="off" maxlength="7" placeholder="УДАЛИТЬ"></label><div class="delete-account-actions"><button type="button" class="btn delete-account-confirm" disabled>Удалить навсегда</button><button type="button" class="btn back delete-account-cancel">Отмена</button></div></div>';document.body.append(krugDeleteModal);
+function closeKrugDelete(){krugDeleteModal.classList.remove('open')}
+deleteAccount=function(){let input=krugDeleteModal.querySelector('input');input.value='';krugDeleteModal.querySelector('.delete-account-confirm').disabled=true;krugDeleteModal.classList.add('open');setTimeout(()=>input.focus(),120)};
+krugDeleteModal.querySelector('input').addEventListener('input',event=>{krugDeleteModal.querySelector('.delete-account-confirm').disabled=event.target.value.trim().toUpperCase()!=='УДАЛИТЬ'});
+krugDeleteModal.querySelector('.delete-account-close').addEventListener('click',closeKrugDelete);krugDeleteModal.querySelector('.delete-account-cancel').addEventListener('click',closeKrugDelete);krugDeleteModal.addEventListener('click',event=>{if(event.target===krugDeleteModal)closeKrugDelete()});
+krugDeleteModal.querySelector('.delete-account-confirm').addEventListener('click',async event=>{let button=event.currentTarget;button.disabled=true;button.textContent='Удаляем…';try{let response=await krugApi('/api/account',{method:'DELETE'}),data=await response.json();if(!response.ok)throw new Error(data.error||'Не удалось удалить аккаунт');['krug_user','krug_legal_accepted','krug_privacy_version','krug_rules_version','krug_listing_draft_v1',KRUG_BUYER_CHECKLIST].forEach(key=>localStorage.removeItem(key));closeKrugDelete();toast('Аккаунт удалён');setTimeout(()=>location.reload(),900)}catch(error){button.disabled=false;button.textContent='Удалить навсегда';toast(error.message)}});
+
+/* KRUG source block 59 */
+// One consistent confirmation sheet for reversible management actions.
+let krugConfirmAction=null;
+const krugConfirmModal=document.createElement('div');krugConfirmModal.className='modal confirm-modal';krugConfirmModal.innerHTML='<div class="sheet confirm-sheet"><div class="grab"></div><div class="confirm-symbol">!</div><h2></h2><p></p><div class="confirm-actions"><button type="button" class="btn confirm-yes"></button><button type="button" class="btn back confirm-no">Отмена</button></div></div>';document.body.append(krugConfirmModal);
+function closeKrugConfirm(){krugConfirmModal.classList.remove('open');krugConfirmAction=null}
+function askKrugConfirm({title,text,action='Продолжить',danger=false,onConfirm}){krugConfirmModal.querySelector('h2').textContent=title;krugConfirmModal.querySelector('p').textContent=text;let yes=krugConfirmModal.querySelector('.confirm-yes');yes.textContent=action;yes.classList.toggle('danger',danger);yes.disabled=false;krugConfirmAction=onConfirm;krugConfirmModal.classList.add('open')}
+krugConfirmModal.querySelector('.confirm-no').addEventListener('click',closeKrugConfirm);krugConfirmModal.addEventListener('click',event=>{if(event.target===krugConfirmModal)closeKrugConfirm()});
+krugConfirmModal.querySelector('.confirm-yes').addEventListener('click',async event=>{if(!krugConfirmAction)return;let button=event.currentTarget,run=krugConfirmAction;button.disabled=true;button.textContent='Подождите…';try{await run();closeKrugConfirm()}catch(error){button.disabled=false;button.textContent='Повторить';toast(error.message||'Не удалось выполнить действие')}});
+deleteCar=function(id){askKrugConfirm({title:'Удалить объявление?',text:'Оно исчезнет из каталога и восстановить его будет нельзя.',action:'Удалить объявление',danger:true,onConfirm:async()=>{await krugJson(`/api/cars/${id}`,{method:'DELETE'});toast('Объявление удалено');await showMyCars();await krugLoadCars()}})};
+removeStaff=function(id){askKrugConfirm({title:'Снять доступ?',text:'Сотрудник больше не сможет модерировать объявления и жалобы.',action:'Снять доступ',danger:true,onConfirm:async()=>{await krugJson(`/api/admin/staff/${encodeURIComponent(id)}`,{method:'DELETE'});toast('Доступ снят');await showStaff()}})};
+cancelKrugExchange=function(id){askKrugConfirm({title:'Отменить предложение?',text:'Получатель больше не сможет принять это предложение обмена.',action:'Отменить предложение',danger:true,onConfirm:async()=>{await krugJson(`/api/exchanges/${id}`,{method:'DELETE'});toast('Предложение отменено');await showExchanges();await krugLoadProfile()}})};
+markCarSold=function(id){askKrugConfirm({title:'Автомобиль продан?',text:'Объявление исчезнет из общего каталога. Позже его можно будет вернуть в продажу из раздела «Мои объявления».',action:'Да, автомобиль продан',onConfirm:async()=>{await krugJson(`/api/cars/${id}`,{method:'PUT',body:JSON.stringify({action:'sold'})});toast('Поздравляем с продажей!');await showMyCars();await krugLoadCars()}})};
+document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;if(krugConfirmModal.classList.contains('open'))closeKrugConfirm();else if(krugDeleteModal.classList.contains('open'))closeKrugDelete();else if(krugReportModal.classList.contains('open'))closeKrugReport()});
 
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
