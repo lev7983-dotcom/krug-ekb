@@ -30,7 +30,7 @@ DATA_RESIDENCY_CONFIRMED=os.environ.get("DATA_RESIDENCY_RF_CONFIRMED","")=="1"
 LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS and DATA_RESIDENCY_CONFIRMED)
 OPEN_BETA=os.environ.get("KRUG_OPEN_BETA","1")=="1" and not LEGAL_READY
 WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
-TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting"}
+TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting","updates_received":0,"last_update_at":"","welcome_sent":0,"last_delivery_error":""}
 PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
 ALLOWED_ORIGINS={PUBLIC_ORIGIN,*[x.strip().rstrip("/") for x in os.environ.get("ALLOWED_ORIGINS","").split(",") if x.strip()]}
 NOW=lambda: datetime.now(timezone.utc)
@@ -409,7 +409,11 @@ def telegram_welcome(update):
     chat_id=(message.get("chat") or {}).get("id"); first=(message.get("from") or {}).get("first_name") or ""
     if not chat_id: return
     greeting=f"Добро пожаловать в КРУГ, {first}!" if first else "Добро пожаловать в КРУГ!"
-    telegram_call("sendMessage",{"chat_id":chat_id,"text":greeting+"\n\nАвтомобили Екатеринбурга: покупка, продажа, обмен и срочные объявления.","reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
+    try:
+        result=telegram_call("sendMessage",{"chat_id":chat_id,"text":greeting+"\n\nАвтомобили Екатеринбурга: покупка, продажа, обмен и срочные объявления.","reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
+        if result.get("ok"): TELEGRAM_STATUS["welcome_sent"]=int(TELEGRAM_STATUS.get("welcome_sent") or 0)+1; TELEGRAM_STATUS["last_delivery_error"]=""
+    except Exception as exc:
+        code=getattr(exc,"code",None); TELEGRAM_STATUS["last_delivery_error"]=f"telegram_http_{code}" if code else type(exc).__name__; print(f"Telegram welcome failed: {type(exc).__name__}")
 
 def setup_telegram_webhook():
     if not BOT_TOKEN: return
@@ -502,7 +506,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":42,"release":"v66","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":43,"release":"v67","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or beta),"testing_mode":bool(beta and OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -658,6 +662,7 @@ class Handler(SimpleHTTPRequestHandler):
             if is_webhook:
                 supplied=str(self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "")
                 if not supplied or not hmac.compare_digest(supplied,WEBHOOK_SECRET): return self.send_json({"error":"Not found"},404)
+                TELEGRAM_STATUS["updates_received"]=int(TELEGRAM_STATUS.get("updates_received") or 0)+1; TELEGRAM_STATUS["last_update_at"]=NOW().isoformat()
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
