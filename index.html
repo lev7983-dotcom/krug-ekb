@@ -7,13 +7,13 @@
   <title>КРУГ — автомобили Екатеринбурга</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 
-  <link rel="stylesheet" href="app.css?v=103">
+  <link rel="stylesheet" href="app.css?v=104">
 </head>
 <body>
 <main class="app">
   <section class="screen active" id="home">
     <header class="top"><div class="brand">КРУГ<i></i></div><button class="city">⌖ Екатеринбург</button><button class="icon-btn">⌕</button></header>
-    <div class="hero"><img src="krug-hero.png" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
+    <div class="hero"><img src="krug-hero.webp" alt="Автомобили на городской парковке"><div class="hero-copy"><div class="eyebrow"><span class="dot"></span> авто рядом, без лишнего</div><h1>Найди свою машину в городе</h1><div class="hero-actions"><button class="btn lime" onclick="go('catalog')">Смотреть авто</button><button class="btn ghost" onclick="go('create')">Продать</button></div></div></div>
     <div class="section"><div class="section-head"><h2>Что ищем?</h2></div><div class="modes"><button class="mode active" onclick="setMode(this,'Все')">Купить</button><button class="mode" onclick="setMode(this,'Обмен')">Обмен</button><button class="mode" onclick="go('urgent')">Срочно ⚡</button></div></div>
     <div class="section"><div class="section-head"><h2>Сейчас в городе</h2><button class="link" onclick="go('catalog')">Все объявления</button></div><div class="cards" id="homeCards"></div></div>
     <div class="section"><div class="urgent-banner" id="homeSub"><span class="pulse"></span><h2>Срочные авто</h2><p>Получайте уведомление, когда в Екатеринбурге появляется автомобиль, который хотят продать сегодня.</p><button class="btn lime" onclick="subscribe(this)">Подписаться</button></div></div>
@@ -98,6 +98,6 @@
 
 <div class="privacy-gate" id="privacyGate"><div class="privacy-gate-card"><div class="eyebrow"><span class="dot"></span> защита данных</div><h2>Перед использованием КРУГ</h2><p id="privacyOperatorText">Проверяем реквизиты оператора…</p><label class="privacy-choice"><input id="privacyPolicyChoice" type="checkbox"><span>Я отдельно даю согласие на обработку персональных данных по <button type="button" class="legal-link" onclick="openLegal('privacy')">политике конфиденциальности</button>.</span></label><label class="privacy-choice"><input id="privacyRulesChoice" type="checkbox"><span>Я принимаю <button type="button" class="legal-link" onclick="openLegal('rules')">правила КРУГ</button>. Это отдельное подтверждение.</span></label><div class="privacy-gate-status" id="privacyGateStatus"></div><div class="privacy-gate-actions"><button class="btn lime" id="privacyAcceptButton">Принять и продолжить</button><button class="btn back" id="privacyBrowseButton">Только смотреть каталог</button></div></div></div>
 
-  <script src="app.js?v=103" defer></script>
+  <script src="app.js?v=104" defer></script>
 </body>
 </html>
