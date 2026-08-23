@@ -152,3 +152,6 @@ h1,.section h2,.page-head h1{color:#f7f3ec}.section-head{border-bottom:1px solid
 
 /* Clear mobile typing state */
 .field{padding:3px;border-radius:16px;transition:background .18s ease}#create .field.typing{background-color:rgba(205,176,131,.09)!important}#create .field.typing label{color:var(--champagne-soft)!important}#create .field.typing input,#create .field.typing textarea,#create .field.typing select{caret-color:#f0cf99!important}.field input:focus-visible,.field textarea:focus-visible,.field select:focus-visible{outline:2px solid transparent!important}
+
+/* Thumb-friendly controls */
+button{touch-action:manipulation}.btn,.city,.link,.chip,.compare-add{min-height:44px}.heart{width:44px!important;height:44px!important;min-width:44px;min-height:44px}.icon-btn{min-width:44px;min-height:44px}.link{display:inline-flex;align-items:center}.compare-add{display:inline-flex;align-items:center;justify-content:center}
