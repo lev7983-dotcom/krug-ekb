@@ -17,7 +17,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v101"
+APP_RELEASE="v102"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -32,7 +32,7 @@ LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR
 OPEN_BETA=os.environ.get("KRUG_OPEN_BETA","1")=="1" and not LEGAL_READY
 PRODUCTION=os.environ.get("KRUG_ENV","").strip().lower()=="production" or bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
 WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
-TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting","updates_received":0,"last_update_at":"","welcome_sent":0,"last_delivery_error":""}
+TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting","updates_received":0,"last_update_at":"","welcome_sent":0,"last_delivery_error":"","notifications_sent":0,"notifications_failed":0,"last_notification_error":"","last_notification_at":""}
 PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
 ALLOWED_ORIGINS={PUBLIC_ORIGIN,*[x.strip().rstrip("/") for x in os.environ.get("ALLOWED_ORIGINS","").split(",") if x.strip()]}
 NOW=lambda: datetime.now(timezone.utc)
@@ -354,6 +354,12 @@ def web_app_url(car_id=None):
     url=f"{PUBLIC_URL}{separator}app={APP_RELEASE}"
     return f"{url}&car={int(car_id)}" if car_id else url
 
+def record_notification_delivery(ok,error=""):
+    key="notifications_sent" if ok else "notifications_failed"
+    TELEGRAM_STATUS[key]=int(TELEGRAM_STATUS.get(key) or 0)+1
+    TELEGRAM_STATUS["last_notification_at"]=NOW().isoformat()
+    TELEGRAM_STATUS["last_notification_error"]="" if ok else clean_text(error,80)
+
 def notify_urgent(car_id,name,price):
     """Send urgent-listing alerts in the background when a Telegram token is configured."""
     if not BOT_TOKEN: return
@@ -364,8 +370,8 @@ def notify_urgent(car_id,name,price):
         for chat_id in subscribers:
             if not chat_id.isdigit(): continue
             payload=json.dumps({"chat_id":chat_id,"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть автомобиль","web_app":{"url":web_app_url(car_id)}}]]}},ensure_ascii=False).encode("utf-8")
-            try: urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data=payload,headers={"Content-Type":"application/json"}),timeout=8).read()
-            except Exception as exc: print(f"Telegram alert failed: {type(exc).__name__}")
+            try: urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data=payload,headers={"Content-Type":"application/json"}),timeout=8).read(); record_notification_delivery(True)
+            except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Telegram alert failed: {type(exc).__name__}")
     except Exception as exc: print(f"Telegram alerts unavailable: {type(exc).__name__}")
 
 def telegram_call(method,payload):
@@ -374,8 +380,10 @@ def telegram_call(method,payload):
 
 def notify_exchange_user(chat_id,text,car_id=None):
     if not BOT_TOKEN or not str(chat_id).isdigit(): return
-    try: telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":web_app_url(car_id)}}]]}})
-    except Exception as exc: print(f"Exchange notification failed: {type(exc).__name__}")
+    try:
+        result=telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":web_app_url(car_id)}}]]}})
+        record_notification_delivery(bool(result.get("ok")),"telegram_rejected" if not result.get("ok") else "")
+    except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Exchange notification failed: {type(exc).__name__}")
 
 def notify_price_drop(car_id,name,old_price,new_price):
     if not BOT_TOKEN: return
@@ -515,7 +523,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60,uid if authenticated else ""): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":77,"release":APP_RELEASE,"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":78,"release":APP_RELEASE,"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
