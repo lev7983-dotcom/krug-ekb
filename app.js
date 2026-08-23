@@ -794,14 +794,15 @@ function showKrugPersonalUnavailable(title){
 function showKrugExchangeSetup(){showKrugPersonalUnavailable('Предложения обмена')}
 async function krugPersonalReady(){try{return !!(await loadKrugLegalInfo()).ready}catch(_){return false}}
 function showKrugPersonalLoading(title){go('catalog');document.querySelector('#catalog .page-head h1').textContent=title;document.querySelector('#catalog .page-head p').textContent='Загружаем личный раздел…';document.getElementById('catalogCards').innerHTML='<div class="catalog-skeleton personal-skeleton" aria-label="Загружаем данные"><i></i><i></i><i></i></div>';krugMoreButton?.classList.remove('show')}
+function finishKrugPersonalLoading(retryCall){if(!document.querySelector('#catalogCards .personal-skeleton'))return;document.querySelector('#catalog .page-head p').textContent='Личный раздел КРУГ';document.getElementById('catalogCards').innerHTML=`<div class="panel search-empty personal-load-error"><h3>Не удалось загрузить данные</h3><p class="meta">Проверьте интернет или повторите через несколько секунд.</p><button type="button" class="btn back" onclick="${retryCall}()">Повторить</button></div>`}
 const krugShowMyCarsWhenReady=showMyCars;
-showMyCars=async function(){showKrugPersonalLoading('Мои объявления');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Мои объявления');return krugShowMyCarsWhenReady()};
+showMyCars=async function(){showKrugPersonalLoading('Мои объявления');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Мои объявления');let result=await krugShowMyCarsWhenReady();finishKrugPersonalLoading('showMyCars');return result};
 const krugShowFavouritesWhenReady=showFavourites;
-showFavourites=async function(){showKrugPersonalLoading('Избранное');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Избранное');return krugShowFavouritesWhenReady()};
+showFavourites=async function(){showKrugPersonalLoading('Избранное');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Избранное');let result=await krugShowFavouritesWhenReady();finishKrugPersonalLoading('showFavourites');return result};
 const krugShowRecentWhenReady=showRecentlyViewed;
-showRecentlyViewed=async function(){showKrugPersonalLoading('Недавно просмотренные');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Недавно просмотренные');return krugShowRecentWhenReady()};
+showRecentlyViewed=async function(){showKrugPersonalLoading('Недавно просмотренные');if(!await krugPersonalReady())return showKrugPersonalUnavailable('Недавно просмотренные');let result=await krugShowRecentWhenReady();finishKrugPersonalLoading('showRecentlyViewed');return result};
 const krugShowExchangesWhenReady=showExchanges;
-showExchanges=async function(){showKrugPersonalLoading('Предложения обмена');if(!await krugPersonalReady())return showKrugExchangeSetup();return krugShowExchangesWhenReady()};
+showExchanges=async function(){showKrugPersonalLoading('Предложения обмена');if(!await krugPersonalReady())return showKrugExchangeSetup();let result=await krugShowExchangesWhenReady();finishKrugPersonalLoading('showExchanges');return result};
 const krugSaveFavouriteWhenReady=saveV2;
 saveV2=async function(event,button,id){event?.preventDefault?.();event?.stopPropagation?.();if(!await krugPersonalReady()){showKrugPersonalUnavailable('Избранное');return}return krugSaveFavouriteWhenReady(event,button,id)};
 const krugOfferExchangeWhenReady=offerExchange;
