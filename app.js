@@ -938,3 +938,5 @@ if(!krugInitData&&location.protocol!=='file:'){
   if(krugProfileRole)krugProfileRole.textContent='Публичный каталог';
 }
 window.addEventListener('pageshow',()=>setTimeout(()=>{if(!krugEditingId){restoreKrugDraft(true);restoreKrugDraftDealSwitches();paintKrugListingQuality()}},0),{once:true});
+document.querySelector('#create').addEventListener('focusin',event=>event.target.closest('.field')?.classList.add('typing'));
+document.querySelector('#create').addEventListener('focusout',event=>event.target.closest('.field')?.classList.remove('typing'));
