@@ -975,8 +975,10 @@ document.querySelector('#create').addEventListener('focusout',event=>event.targe
 /* KRUG source block 61 */
 // Keep actions inert until the currently opened listing has fully arrived.
 const krugOpenBeforeLoadingGuard=openCarV3;
+let krugLastDetailArgs=[];
 openCarV3=async function(...args){
   const expectedId=Number(args[0])||0;
+  krugLastDetailArgs=args;
   krugOpenedDetail=null;
   sellerContact.hidden=false;
   sellerContact.disabled=true;
@@ -985,12 +987,14 @@ openCarV3=async function(...args){
   let exchangeButton=document.querySelector('.sheet .exchange-action');
   if(!exchangeButton){exchangeButton=document.createElement('button');exchangeButton.className='btn back exchange-action';exchangeButton.textContent='↔ Предложить обмен';exchangeButton.onclick=offerExchange;document.querySelector('.sheet').insertBefore(exchangeButton,document.querySelector('.sheet').lastElementChild)}
   if(exchangeButton)exchangeButton.disabled=true;
-  try{await krugOpenBeforeLoadingGuard(...args)}finally{
+  try{await krugOpenBeforeLoadingGuard(...args)}catch(error){toast(error?.message||'Не удалось загрузить карточку')}finally{
     if(Number(krugOpenedCar)!==expectedId)return;
     const ready=Number(krugOpenedDetail?.id)===expectedId;
-    sellerContact.disabled=!ready;
+    sellerContact.disabled=false;
     if(!ready)sellerContact.textContent='Повторить загрузку';
     exchangeButton=document.querySelector('.sheet .exchange-action');
     if(exchangeButton)exchangeButton.disabled=!ready;
   }
 };
+const krugContactBeforeRetry=contactSeller;
+contactSeller=function(){if(!krugOpenedDetail&&krugLastDetailArgs.length){toast('Повторяем загрузку…');return openCarV3(...krugLastDetailArgs)}return krugContactBeforeRetry()};
