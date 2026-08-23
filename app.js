@@ -966,5 +966,8 @@ if(!krugInitData&&location.protocol!=='file:'){
 window.addEventListener('pageshow',()=>setTimeout(()=>{if(!krugEditingId){restoreKrugDraft(true);restoreKrugDraftDealSwitches();paintKrugListingQuality()}},0),{once:true});
 // One fallback for every dynamically created image: catalogue, gallery, compare and exchanges.
 document.addEventListener('error',event=>{let image=event.target;if(!(image instanceof HTMLImageElement)||image.dataset.krugFallback==='1')return;image.dataset.krugFallback='1';image.src=hero;image.alt=image.alt||'Фотография автомобиля'},true);
+let krugLastForegroundRefresh=Date.now();
+async function refreshKrugAfterReturn(){if(document.visibilityState!=='visible'||location.protocol==='file:'||Date.now()-krugLastForegroundRefresh<45000)return;krugLastForegroundRefresh=Date.now();await Promise.allSettled([krugLoadCars(),krugLoadProfile(),paintKrugSystemStatus()])}
+document.addEventListener('visibilitychange',refreshKrugAfterReturn);window.addEventListener('pageshow',event=>{if(event.persisted)refreshKrugAfterReturn()});
 document.querySelector('#create').addEventListener('focusin',event=>event.target.closest('.field')?.classList.add('typing'));
 document.querySelector('#create').addEventListener('focusout',event=>event.target.closest('.field')?.classList.remove('typing'));
