@@ -827,6 +827,33 @@ krugChecklistModal.addEventListener('click',event=>{if(event.target===krugCheckl
 krugChecklistModal.querySelector('.checklist-items').addEventListener('click',event=>{let button=event.target.closest('[data-check-key]');if(!button)return;let all=krugChecklistState(),items=new Set(Array.isArray(all[krugChecklistCar])?all[krugChecklistCar]:[]),key=button.dataset.checkKey;items.has(key)?items.delete(key):items.add(key);all[krugChecklistCar]=[...items];saveKrugChecklistState(all);paintKrugChecklist()});
 krugChecklistModal.querySelector('.checklist-reset').addEventListener('click',()=>{let all=krugChecklistState();delete all[krugChecklistCar];saveKrugChecklistState(all);paintKrugChecklist()});
 
+/* KRUG source block 56 */
+// Live listing-quality assistant encourages complete, trustworthy adverts.
+const krugQuality=document.createElement('div');krugQuality.className='listing-quality';krugQuality.innerHTML='<div class="quality-head"><span><b>Качество объявления</b><small>Заполните карточку — покупателю будет проще принять решение</small></span><strong>0%</strong></div><div class="quality-track"><i></i></div><p></p>';document.querySelector('#create .page-head')?.after(krugQuality);
+function krugListingQuality(){
+  let checks=[
+    [carName.value.trim().length>=2,12,'Укажите марку и модель'],
+    [Number(carYear.value)>=1950,8,'Добавьте год выпуска'],
+    [Number(carPrice.value)>=1000,8,'Укажите цену'],
+    [Number(carKm.value)>=0&&carKm.value!=='',6,'Укажите пробег'],
+    [krugImagesData.length>0,18,'Добавьте хотя бы одну фотографию'],
+    [carDescription.value.trim().length>=80,12,'Добавьте подробное описание от 80 символов'],
+    [!!carTransmission.value,6,'Выберите коробку передач'],
+    [!!carBodyType.value,6,'Выберите тип кузова'],
+    [!!carDrive.value,5,'Укажите привод'],
+    [!!carFuel.value,5,'Укажите тип топлива'],
+    [Number(carEnginePower.value)>0,5,'Добавьте мощность двигателя'],
+    [!!carColor.value.trim(),5,'Укажите цвет'],
+    [Number(carOwners.value)>0,4,'Укажите количество владельцев']
+  ];
+  let score=checks.reduce((sum,[done,weight])=>sum+(done?weight:0),0),missing=checks.find(([done])=>!done)?.[2]||'Объявление отлично заполнено';return {score,missing}
+}
+function paintKrugListingQuality(){let {score,missing}=krugListingQuality();krugQuality.querySelector('strong').textContent=`${score}%`;krugQuality.querySelector('.quality-track i').style.width=`${score}%`;krugQuality.querySelector('p').textContent=score===100?'✓ Объявление готово привлекать покупателей':`Следующий шаг: ${missing}`;krugQuality.classList.toggle('complete',score===100)}
+document.querySelectorAll('#create input,#create textarea,#create select').forEach(field=>{field.addEventListener('input',paintKrugListingQuality);field.addEventListener('change',paintKrugListingQuality)});
+new MutationObserver(paintKrugListingQuality).observe(photoPreviews,{childList:true,subtree:true});
+const krugNextStepBeforeQuality=nextStep;nextStep=function(step){let result=krugNextStepBeforeQuality(step);paintKrugListingQuality();return result};
+paintKrugListingQuality();
+
 /* KRUG source block 48 */
 // Mobile photo manager: compact payload, visible size and removal before publishing.
 function krugThumbnailFromData(src){return new Promise(resolve=>{if(!src)return resolve('');let img=new Image();img.onload=()=>{let max=420,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.6))};img.onerror=()=>resolve('');img.src=src})}
