@@ -1,5 +1,9 @@
 /* KRUG source block 1 */
 const hero='/krug-hero.png';
+const safeText=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeImageSrc=value=>{let src=String(value||'');return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(src)||/^(?:\/|assets\/)[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp)$/i.test(src)?src:hero};
+const krugEyeIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>`;
+let catalogRange='all';
 let cars=[
  {name:'Toyota RAV4',price:2890000,year:2021,km:'54 000 км',type:'Продажа',urgent:false,pos:'70% 50%'},
  {name:'Kia K5',price:2470000,year:2020,km:'72 000 км',type:'Обмен',urgent:false,pos:'18% 50%'},
@@ -13,7 +17,7 @@ const rub=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
 function card(c){return `<article class="car" onclick="openCar('${c.name}',${c.price},'${c.pos}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart" onclick="save(event,this)">♡</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">Проверен VIN</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 function render(list,target){document.getElementById(target).innerHTML=list.map(card).join('')||'<div class="panel"><h3>Здесь пока пусто</h3><p class="meta">Попробуйте другой диапазон цены.</p></div>'}
 function renderAll(){render(cars.slice(0,3),'homeCards');render(cars,'catalogCards');render(cars.filter(c=>c.urgent),'urgentCards')}
-renderAll();
+queueMicrotask(()=>renderAll());
 async function loadCars(){if(location.protocol==='file:')return;try{let r=await fetch('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll()}catch(e){toast('Сервер недоступен — показаны демо-данные')}}
 loadCars();
 function go(id){document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.go===id));scrollTo(0,0)}
@@ -58,7 +62,7 @@ async function manageCar(id,action){let r=await krugApi(`/api/cars/${id}`,{metho
 async function deleteCar(id){if(!confirm('Удалить объявление?'))return;let r=await krugApi(`/api/cars/${id}`,{method:'DELETE'});if(r.ok){toast('Объявление удалено');showMyCars();krugLoadProfile()}}
 async function offerExchange(){let r=await krugApi('/api/my-cars'),mine=(await r.json()).filter(x=>x.status==='active');if(!mine.length){closeModal();go('create');return toast('Сначала разместите свой автомобиль')}let message=prompt(`Предложить ${mine[0].name} в обмен. Добавьте сообщение:`,`Готов обсудить обмен`);if(message===null)return;let res=await krugApi('/api/exchanges',{method:'POST',body:JSON.stringify({target_car_id:krugOpenedCar,offered_car_id:mine[0].id,message})});toast(res.ok?'Предложение обмена отправлено':'Не удалось отправить')}
 let profileButtons=document.querySelectorAll('#profile .menu-item');if(profileButtons[0])profileButtons[0].onclick=showMyCars;if(profileButtons[1])profileButtons[1].onclick=async()=>{let r=await krugApi('/api/exchanges'),x=await r.json();toast(x.length?`Предложений обмена: ${x.length}`:'Предложений пока нет')};
-renderAll();
+queueMicrotask(()=>renderAll());
 
 /* KRUG source block 4 */
 // KRUG v4: real counters, persistent subscription controls and complete profile shortcuts.
@@ -124,8 +128,6 @@ function contactSeller(){
 /* KRUG source block 6 */
 // KRUG v7: exchange inbox with accept/reject actions and outgoing statuses.
 const exchangeStatus={new:'Новое',accepted:'Принято',rejected:'Отклонено'};
-const safeText=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const safeImageSrc=value=>{let src=String(value||'');return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(src)||/^(?:\/|assets\/)[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp)$/i.test(src)?src:hero};
 async function showExchanges(){
   let r=await krugApi('/api/exchanges');if(!r.ok)return toast('Не удалось загрузить обмены');let list=await r.json();
   go('catalog');document.querySelector('#catalog .page-head h1').textContent='Предложения обмена';
@@ -144,7 +146,6 @@ if(profileButtons[1])profileButtons[1].onclick=showExchanges;
 
 /* KRUG source block 7 */
 // KRUG v8: correct price ranges, live search and catalogue sorting.
-let catalogRange='all';
 function applyCatalog(){
   let q=(catalogSearch?.value||'').trim().toLowerCase(),list=cars.filter(c=>String(c.name).toLowerCase().includes(q));
   if(catalogRange!=='all'){
@@ -169,7 +170,7 @@ async function showDealerSettings(){
 async function saveDealer(role){let company=document.getElementById('dealerCompany')?.value.trim()||'';let r=await krugApi('/api/profile',{method:'PUT',body:JSON.stringify({role,company})}),d=await r.json();if(!r.ok)return toast(d.error||'Не удалось сохранить профиль');toast(role==='dealer'?'Профиль дилера сохранён':'Включён профиль частника');await krugLoadCars();await krugLoadProfile();go('profile')}
 async function krugLoadProfile(){let u=krugTgUser||{first_name:'Пользователь',username:''};await krugApi('/api/session',{method:'POST',body:JSON.stringify({first_name:u.first_name,username:u.username||''})});let r=await krugApi('/api/me');if(!r.ok)return;let d=await r.json(),p=document.querySelector('.profile-card');if(!p)return;p.querySelector('.avatar').textContent=(u.first_name||'К')[0]+(u.last_name||'').slice(0,1);p.querySelector('h2').textContent=[u.first_name,u.last_name].filter(Boolean).join(' ');p.querySelector('p').textContent=d.user?.role==='dealer'?`Дилер · ${d.user.company||'Компания'} · Екатеринбург`:'Частный продавец · Екатеринбург';let n=p.querySelectorAll('.stat b');n[0].textContent=d.listings;n[1].textContent=d.favourites;n[2].textContent=d.subscriptions;if(profileButtons[1])profileButtons[1].innerHTML=`Предложения обмена <span>${d.offers} ›</span>`}
 if(profileButtons[4])profileButtons[4].onclick=showDealerSettings;
-renderAll();krugLoadProfile();
+queueMicrotask(()=>renderAll());krugLoadProfile();
 
 /* KRUG source block 9 */
 // KRUG v10: up to eight compressed photos and a listing gallery.
@@ -203,7 +204,7 @@ if(profileButtons[0])profileButtons[0].onclick=showMyCars;
 // KRUG v13: safe listing rendering; user text is never interpreted as HTML.
 function openCarById(id){let c=cars.find(x=>Number(x.id)===Number(id));if(c)openCarV3(c.id,c.name,c.price,c.pos||'50% 50%',safeImageSrc(c.image||hero))}
 function card(c){let name=safeText(c.name),picture=c.image||hero,dealer=c.seller_role==='dealer';return `<article class="car" onclick="openCarById(${Number(c.id)||0})"><div class="car-media"><img src="${picture}" style="object-position:${safeText(c.pos||'50% 50%')}" alt="${name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':safeText(c.type)}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${Number(c.id)||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${name}</h3><div class="meta">${Number(c.year)||'—'} · ${safeText(c.km)}</div></div><div class="price">${rub(Number(c.price)||0)}</div></div><div class="tags"><span class="tag">Екатеринбург</span>${dealer?`<span class="tag">✓ Дилер · ${safeText(c.seller_company||'Компания')}</span>`:'<span class="tag">Частник</span>'}${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
-renderAll();
+queueMicrotask(()=>renderAll());
 
 /* KRUG source block 13 */
 // KRUG v14: favourites are loaded from the database, not stale page memory.
@@ -492,7 +493,6 @@ loadKrugCarPage(true);
 
 /* KRUG source block 36 */
 // KRUG v38: daily unique public listing views.
-const krugEyeIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>`;
 const krugDetailViews=document.createElement('div');krugDetailViews.className='detail-views';detailSeller.after(krugDetailViews);
 function krugViewsLabel(value){let count=Math.max(0,Number(value)||0);return `${count} ${count%10===1&&count%100!==11?'просмотр':([2,3,4].includes(count%10)&&![12,13,14].includes(count%100)?'просмотра':'просмотров')}`}
 function paintCarViews(id,value){let count=Math.max(0,Number(value)||0);document.querySelectorAll(`[data-car-id="${Number(id)}"] .car-interest span`).forEach(x=>x.textContent=krugViewsLabel(count))}
