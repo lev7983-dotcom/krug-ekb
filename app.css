@@ -156,4 +156,5 @@ h1,.section h2,.page-head h1{color:#f7f3ec}.section-head{border-bottom:1px solid
 
 /* Thumb-friendly controls */
 button{touch-action:manipulation}.btn,.city,.link,.chip,.compare-add{min-height:44px}.heart{width:44px!important;height:44px!important;min-width:44px;min-height:44px}.icon-btn{min-width:44px;min-height:44px}.link{display:inline-flex;align-items:center}.compare-add{display:inline-flex;align-items:center;justify-content:center}
+.sheet .btn:disabled{opacity:.52;cursor:wait;pointer-events:none;filter:saturate(.45)}
 .switch{position:relative;height:44px!important;background:transparent!important;padding:11px 3px!important}.switch::before{content:"";position:absolute;inset:8px 0;width:46px;height:27px;border-radius:50px;background:#555954;transition:.2s}.switch.on::before{background:var(--champagne)}.switch i{position:relative;z-index:1}.legal-link{min-height:44px;display:inline-flex;align-items:center;margin:-13px -2px;padding:13px 2px;vertical-align:middle}

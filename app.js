@@ -203,7 +203,7 @@ const compressCarPhoto=file=>new Promise((resolve,reject)=>{let img=new Image(),
 function krugRenderPhotoPreviews(){let bytes=krugImagesData.reduce((sum,src)=>sum+Math.ceil(String(src).length*.75),0),size=bytes>=1_000_000?`${(bytes/1_000_000).toFixed(1)} МБ`:`${Math.max(1,Math.round(bytes/1000))} КБ`;photoPreviews.innerHTML=krugImagesData.map((src,i)=>`<div class="photo-preview-item" data-photo-index="${i}"><img src="${safeImageSrc(src)}" alt="Фото ${i+1}" title="Сделать обложкой"><button type="button" data-remove-photo="${i}" aria-label="Удалить фото ${i+1}">×</button>${i===0?'<small>Обложка</small>':''}</div>`).join('')+(krugImagesData.length?`<div class="photo-previews-size">${krugImagesData.length}/8<br>${size}<small>Нажмите фото — сделать обложкой</small></div>`:'')}
 carImage.addEventListener('change',async()=>{let available=Math.max(0,8-krugImagesData.length),files=[...carImage.files].slice(0,available);if(!available){carImage.value='';return toast('Уже добавлено 8 фотографий')}if(files.some(f=>f.size>10_000_000))return toast('Каждое фото должно быть меньше 10 МБ');toast('Подготавливаем фотографии…');try{let prepared=await Promise.all(files.map(compressCarPhoto));krugImagesData.push(...prepared);krugImageData=krugImagesData[0]||'';krugThumbnailData=await krugThumbnailFromData(krugImageData);carPreview.hidden=true;carImage.value='';krugRenderPhotoPreviews();toast(`Добавлено фото: ${krugImagesData.length} из 8`)}catch(e){toast('Не удалось обработать фотографию')}});
 async function publish(){let active=document.querySelector('.type-card.active').textContent,data={name:carName.value.trim(),year:+carYear.value,price:+carPrice.value,km:+carKm.value||0,description:carDescription.value.trim(),phone:carPhone.value.trim(),type:active.includes('Обмен')?'Обмен':'Продажа',urgent:active.toLowerCase().includes('срочно'),images:krugImagesData};if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');let r=await krugApi('/api/cars',{method:'POST',body:JSON.stringify(data)}),d=await r.json();if(!r.ok)return toast(d.error||'Проверьте данные');toast('Объявление опубликовано');document.querySelectorAll('#create input,#create textarea').forEach(x=>x.value='');krugImageData='';krugImagesData=[];photoPreviews.innerHTML='';carPreview.hidden=true;await krugLoadCars();setTimeout(()=>go('catalog'),700)}
-async function openCarV3(id,n,p,pos,picture){krugOpenedCar=id;openCar(n,p,pos);detailImg.src=safeImageSrc(picture);detailThumbs.innerHTML='';let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}if(!id||location.protocol==='file:')return;let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');let d=krugOpenedDetail=await r.json(),pics=(d.images?.length?d.images:[d.image||hero]).map(safeImageSrc);detailImg.src=pics[0];detailThumbs.innerHTML=pics.map((src,i)=>`<img class="${i?'':'active'}" src="${src}" alt="Фото ${i+1}" onclick="selectCarPhoto(this)">`).join('');detailName.textContent=d.name;detailPrice.textContent=rub(d.price);detailYear.textContent=d.year;detailKm.textContent=d.km;detailType.textContent=d.type;detailDescription.textContent=d.description||'Описание не указано';detailSeller.textContent=d.is_owner?'Это ваше объявление':`${d.seller_company||d.seller_name||'Продавец'} · Екатеринбург`;sellerContact.textContent=d.is_owner?'Управлять объявлением':(d.seller_username?'Написать в Telegram':d.phone?'Позвонить продавцу':'Запросить контакт')}
+async function openCarV3(id,n,p,pos,picture){krugOpenedCar=id;openCar(n,p,pos);detailImg.src=safeImageSrc(picture);detailThumbs.innerHTML='';let sheet=document.querySelector('.sheet');if(!sheet.querySelector('.exchange-action')){let x=document.createElement('button');x.className='btn back exchange-action';x.textContent='↔ Предложить обмен';x.onclick=offerExchange;sheet.insertBefore(x,sheet.lastElementChild)}if(!id||location.protocol==='file:')return;let r=await krugApi(`/api/cars/${id}`);if(!r.ok)return toast('Не удалось открыть объявление');let d=await r.json();if(Number(krugOpenedCar)!==Number(id))return;krugOpenedDetail=d;let pics=(d.images?.length?d.images:[d.image||hero]).map(safeImageSrc);detailImg.src=pics[0];detailThumbs.innerHTML=pics.map((src,i)=>`<img class="${i?'':'active'}" src="${src}" alt="Фото ${i+1}" onclick="selectCarPhoto(this)">`).join('');detailName.textContent=d.name;detailPrice.textContent=rub(d.price);detailYear.textContent=d.year;detailKm.textContent=d.km;detailType.textContent=d.type;detailDescription.textContent=d.description||'Описание не указано';detailSeller.textContent=d.is_owner?'Это ваше объявление':`${d.seller_company||d.seller_name||'Продавец'} · Екатеринбург`;sellerContact.textContent=d.is_owner?'Управлять объявлением':(d.seller_username?'Написать в Telegram':d.phone?'Позвонить продавцу':'Запросить контакт')}
 function selectCarPhoto(img){detailImg.src=img.src;detailThumbs.querySelectorAll('img').forEach(x=>x.classList.toggle('active',x===img))}
 
 /* KRUG source block 10 */
@@ -971,3 +971,26 @@ async function refreshKrugAfterReturn(){if(document.visibilityState!=='visible'|
 document.addEventListener('visibilitychange',refreshKrugAfterReturn);window.addEventListener('pageshow',event=>{if(event.persisted)refreshKrugAfterReturn()});
 document.querySelector('#create').addEventListener('focusin',event=>event.target.closest('.field')?.classList.add('typing'));
 document.querySelector('#create').addEventListener('focusout',event=>event.target.closest('.field')?.classList.remove('typing'));
+
+/* KRUG source block 61 */
+// Keep actions inert until the currently opened listing has fully arrived.
+const krugOpenBeforeLoadingGuard=openCarV3;
+openCarV3=async function(...args){
+  const expectedId=Number(args[0])||0;
+  krugOpenedDetail=null;
+  sellerContact.hidden=false;
+  sellerContact.disabled=true;
+  sellerContact.textContent='Загружаем контакт…';
+  detailSeller.textContent='Загружаем данные продавца…';
+  let exchangeButton=document.querySelector('.sheet .exchange-action');
+  if(!exchangeButton){exchangeButton=document.createElement('button');exchangeButton.className='btn back exchange-action';exchangeButton.textContent='↔ Предложить обмен';exchangeButton.onclick=offerExchange;document.querySelector('.sheet').insertBefore(exchangeButton,document.querySelector('.sheet').lastElementChild)}
+  if(exchangeButton)exchangeButton.disabled=true;
+  try{await krugOpenBeforeLoadingGuard(...args)}finally{
+    if(Number(krugOpenedCar)!==expectedId)return;
+    const ready=Number(krugOpenedDetail?.id)===expectedId;
+    sellerContact.disabled=!ready;
+    if(!ready)sellerContact.textContent='Повторить загрузку';
+    exchangeButton=document.querySelector('.sheet .exchange-action');
+    if(exchangeButton)exchangeButton.disabled=!ready;
+  }
+};
