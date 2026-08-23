@@ -43,19 +43,24 @@ if(location.protocol==='file:')localStorage.setItem('krug_user',krugUserId);else
 const krugInitData=window.Telegram?.WebApp?.initData||'';
 const krugReadRequests=new Map();
 const krugSessionRequests=new Map();
+const krugFetch=(url,request,timeout=18000)=>{
+  if(request.signal)return fetch(url,request);
+  let controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
+  return fetch(url,{...request,signal:controller.signal}).finally(()=>clearTimeout(timer));
+};
 const krugApi=(url,options={})=>{
   let request={...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}},method=String(options.method||'GET').toUpperCase();
   let personal=/^\/api\/(?:session|me|subscriptions|favourites|recent|my-cars|exchanges|admin(?:\/|$))/.test(url)||/^\/api\/cars\/\d+\/(?:favourite|report)$/.test(url);
   if(!krugInitData&&location.protocol!=='file:'&&personal)return Promise.resolve(new Response(JSON.stringify({error:'Откройте КРУГ внутри Telegram',code:'telegram_required'}),{status:401,headers:{'Content-Type':'application/json'}}));
   if(method==='POST'&&url==='/api/session'){
     let key=String(options.body||''),cached=krugSessionRequests.get(key),now=Date.now();
-    if(!cached||now-cached.created>2000){cached={created:now,promise:fetch(url,request)};krugSessionRequests.set(key,cached)}
+    if(!cached||now-cached.created>2000){cached={created:now,promise:krugFetch(url,request)};krugSessionRequests.set(key,cached)}
     return cached.promise.then(response=>{krugReadRequests.clear();return response.clone()});
   }
-  if(method!=='GET'){krugReadRequests.clear();return fetch(url,request)}
-  if(url!=='/api/me')return fetch(url,request);
+  if(method!=='GET'){krugReadRequests.clear();return krugFetch(url,request)}
+  if(url!=='/api/me')return krugFetch(url,request);
   let cached=krugReadRequests.get(url),now=Date.now();
-  if(!cached||now-cached.created>2000){cached={created:now,promise:fetch(url,request)};krugReadRequests.set(url,cached)}
+  if(!cached||now-cached.created>2000){cached={created:now,promise:krugFetch(url,request)};krugReadRequests.set(url,cached)}
   return cached.promise.then(response=>response.clone());
 };
 function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
@@ -240,6 +245,7 @@ async function krugJson(url,options={}){
     if(!response.ok){let message=data.error||(response.status===401?'Откройте КРУГ кнопкой внутри Telegram':'Сервер временно недоступен');let error=new Error(message);error.status=response.status;error.code=data.code||'';throw error}
     return data;
   }catch(error){
+    if(error?.name==='AbortError'){let timeoutError=new Error('Сервер долго не отвечает. Проверьте интернет и попробуйте снова.');timeoutError.code='network_timeout';error=timeoutError}
     if(error.status===401)krugShowConnection(error.message);
     throw error;
   }
