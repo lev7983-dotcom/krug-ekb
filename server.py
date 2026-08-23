@@ -28,6 +28,7 @@ OPERATOR_ADDRESS=os.environ.get("LEGAL_OPERATOR_ADDRESS","").strip()
 DATA_RESIDENCY_CONFIRMED=os.environ.get("DATA_RESIDENCY_RF_CONFIRMED","")=="1"
 LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS and DATA_RESIDENCY_CONFIRMED)
 WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
+TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting"}
 PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
 ALLOWED_ORIGINS={PUBLIC_ORIGIN,*[x.strip().rstrip("/") for x in os.environ.get("ALLOWED_ORIGINS","").split(",") if x.strip()]}
 NOW=lambda: datetime.now(timezone.utc)
@@ -409,11 +410,17 @@ def setup_telegram_webhook():
     try:
         base=PUBLIC_URL.split("/index.html",1)[0].rstrip("/")
         webhook=f"{base}/api/telegram/webhook"
+        identity=telegram_call("getMe",{})
+        TELEGRAM_STATUS.update({"api_ok":bool(identity.get("ok")),"bot_username":str((identity.get("result") or {}).get("username") or ""),"error":""})
         telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message"]})
         telegram_call("setChatMenuButton",{"menu_button":{"type":"web_app","text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}})
         telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"}]})
+        info=telegram_call("getWebhookInfo",{}).get("result") or {}
+        TELEGRAM_STATUS.update({"webhook_ok":str(info.get("url") or "")==webhook,"pending_updates":min(int(info.get("pending_update_count") or 0),9999),"last_error":clean_text(info.get("last_error_message") or "",120)})
         print("Telegram webhook configured")
-    except Exception as exc: print(f"Telegram webhook unavailable: {type(exc).__name__}")
+    except Exception as exc:
+        code=getattr(exc,"code",None); TELEGRAM_STATUS.update({"api_ok":False,"webhook_ok":False,"error":f"telegram_http_{code}" if code else type(exc).__name__})
+        print(f"Telegram webhook unavailable: {type(exc).__name__}")
 
 class Handler(SimpleHTTPRequestHandler):
     server_version="KRUG"
@@ -485,7 +492,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":37,"release":"v61","personal_actions":LEGAL_READY})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":38,"release":"v62","personal_actions":LEGAL_READY,"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal": return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":LEGAL_READY,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"
