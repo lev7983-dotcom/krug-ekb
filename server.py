@@ -18,6 +18,7 @@ DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
+TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
 INIT_DATA_MAX_AGE=max(300,min(int(os.environ.get("TELEGRAM_INIT_MAX_AGE","3600")),86400))
 POLICY_VERSION=os.environ.get("PRIVACY_POLICY_VERSION","2026-08-16").strip()
@@ -280,6 +281,10 @@ def has_current_consent(user_id):
         return bool(accepted and version==POLICY_VERSION and rules_at and rules_version==RULES_VERSION)
     except Exception: return False
 
+def personal_ready(user_id):
+    """Allow production after legal setup and a closed beta for explicitly known users only."""
+    return bool(LEGAL_READY or str(user_id) in TESTER_IDS or has_current_consent(user_id))
+
 def record_audit(actor_id,action,target=""):
     try:
         with connect() as db: db.execute("INSERT INTO audit_log(actor_id,action,target,created_at) VALUES(?,?,?,?)",(str(actor_id),str(action)[:80],str(target)[:160],NOW().isoformat()))
@@ -303,15 +308,15 @@ def masked_vin(value):
     return value[:3]+"*"*10+value[-4:] if len(value)==17 else ""
 
 def car_detail_payload(row,faved,user_id,authenticated):
-    data=car_dict(row,faved); owner=str(data.get("owner_id"))==str(user_id); consent=bool(data.get("contact_consent_at")); viewer_allowed=LEGAL_READY and authenticated and has_current_consent(user_id)
+    allowed=personal_ready(user_id); data=car_dict(row,faved); owner=str(data.get("owner_id"))==str(user_id); consent=bool(data.get("contact_consent_at")); viewer_allowed=allowed and authenticated and has_current_consent(user_id)
     data["is_owner"]=owner
-    contact_allowed=LEGAL_READY and (owner or (viewer_allowed and consent))
+    contact_allowed=allowed and (owner or (viewer_allowed and consent))
     data["phone"]=data.get("phone","") if contact_allowed and (owner or data.get("phone_public")) else ""
     data["seller_username"]=data.get("seller_username","") if contact_allowed else ""
     data["seller_name"]=data.get("seller_name","") if contact_allowed else ""
-    if not (owner and LEGAL_READY): data["vin"]=masked_vin(data.get("vin"))
+    if not (owner and allowed): data["vin"]=masked_vin(data.get("vin"))
     for key in ("owner_id","search_key","contact_consent_at","consent_version","phone_public"):
-        if not (owner and LEGAL_READY): data.pop(key,None)
+        if not (owner and allowed): data.pop(key,None)
     return data
 
 def purge_expired_data():
@@ -462,7 +467,7 @@ class Handler(SimpleHTTPRequestHandler):
         if authenticated: return True
         self.send_json({"error":"Откройте КРУГ через Telegram, чтобы выполнить это действие"},401); return False
     def require_consent(self,user_id):
-        if not LEGAL_READY:
+        if not personal_ready(user_id):
             self.send_json({"error":"Обработка персональных данных временно отключена до завершения юридической настройки","code":"legal_setup_required"},503); return False
         if has_current_consent(user_id): return True
         self.send_json({"error":"Сначала примите актуальную политику обработки данных","code":"privacy_consent_required","policy_version":POLICY_VERSION},428); return False
@@ -492,8 +497,10 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":38,"release":"v62","personal_actions":LEGAL_READY,"telegram":dict(TELEGRAM_STATUS)})
-        if path=="/api/legal": return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":LEGAL_READY,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":39,"release":"v63","personal_actions":LEGAL_READY,"closed_beta":bool(TESTER_IDS),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/legal":
+            beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
+            return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or beta),"closed_beta":beta,"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
         if path=="/api/cars":
             paged=query.get("paged",[""])[0]=="1"
             try: limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,min(int(query.get("offset",["0"])[0]),1_000_000)) if paged else 0
@@ -651,7 +658,7 @@ class Handler(SimpleHTTPRequestHandler):
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
             if path=="/api/session":
-                if not LEGAL_READY: return self.send_json({"error":"Сбор персональных данных временно отключён: владелец сервиса ещё не заполнил юридические реквизиты и не подтвердил хранение данных в РФ","code":"legal_setup_required"},503)
+                if not personal_ready(uid): return self.send_json({"error":"Сбор персональных данных доступен только закрытой тестовой группе до завершения юридической настройки","code":"legal_setup_required"},503)
                 already=has_current_consent(uid)
                 if not already:
                     if data.get("privacy_consent") is not True or str(data.get("policy_version") or "")!=POLICY_VERSION:
