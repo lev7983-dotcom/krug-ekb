@@ -346,6 +346,11 @@ def car_dict(row,faved=False):
     if not d["images"] and d.get("image"): d["images"]=[d["image"]]
     d["favourite"]=bool(faved); return d
 
+def web_app_url(car_id=None):
+    if not car_id: return PUBLIC_URL
+    separator="&" if "?" in PUBLIC_URL else "?"
+    return f"{PUBLIC_URL}{separator}car={int(car_id)}"
+
 def notify_urgent(car_id,name,price):
     """Send urgent-listing alerts in the background when a Telegram token is configured."""
     if not BOT_TOKEN: return
@@ -355,7 +360,7 @@ def notify_urgent(car_id,name,price):
         text=f"⚡ Срочное авто в Екатеринбурге\n\n{name}\n{price:,} ₽".replace(","," ")+"\n\nОткройте КРУГ, чтобы посмотреть объявление."
         for chat_id in subscribers:
             if not chat_id.isdigit(): continue
-            payload=json.dumps({"chat_id":chat_id,"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}},ensure_ascii=False).encode("utf-8")
+            payload=json.dumps({"chat_id":chat_id,"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть автомобиль","web_app":{"url":web_app_url(car_id)}}]]}},ensure_ascii=False).encode("utf-8")
             try: urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",data=payload,headers={"Content-Type":"application/json"}),timeout=8).read()
             except Exception as exc: print(f"Telegram alert failed: {type(exc).__name__}")
     except Exception as exc: print(f"Telegram alerts unavailable: {type(exc).__name__}")
@@ -364,9 +369,9 @@ def telegram_call(method,payload):
     raw=json.dumps(payload,ensure_ascii=False).encode("utf-8")
     return json.load(urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",data=raw,headers={"Content-Type":"application/json"}),timeout=12))
 
-def notify_exchange_user(chat_id,text):
+def notify_exchange_user(chat_id,text,car_id=None):
     if not BOT_TOKEN or not str(chat_id).isdigit(): return
-    try: telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":PUBLIC_URL}}]]}})
+    try: telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":web_app_url(car_id)}}]]}})
     except Exception as exc: print(f"Exchange notification failed: {type(exc).__name__}")
 
 def notify_price_drop(car_id,name,old_price,new_price):
@@ -374,7 +379,7 @@ def notify_price_drop(car_id,name,old_price,new_price):
     try:
         with connect() as db: rows=db.execute("SELECT user_id FROM favourites WHERE car_id=?",(car_id,)).fetchall()
         drop=old_price-new_price; text=f"📉 Снижение цены в избранном\n\n{name}\nБыло: {old_price:,} ₽\nСтало: {new_price:,} ₽\nВыгода: {drop:,} ₽".replace(","," ")
-        for row in rows: notify_exchange_user(row["user_id"] if DATABASE_URL else row[0],text)
+        for row in rows: notify_exchange_user(row["user_id"] if DATABASE_URL else row[0],text,car_id)
     except Exception as exc: print(f"Price drop notifications failed: {type(exc).__name__}")
 
 def search_subscription_matches(filters,car):
@@ -400,7 +405,7 @@ def notify_saved_searches(owner_id,car):
             if not search_subscription_matches(filters,car): continue
             title=(row["name"] if DATABASE_URL else row[2]) or "Ваш поиск"
             text=f"🔔 Новое авто по подписке «{title}»\n\n{car['name']}\n{int(car['price']):,} ₽".replace(","," ")+"\n\nОткройте КРУГ, чтобы посмотреть объявление."
-            notify_exchange_user(chat_id,text)
+            notify_exchange_user(chat_id,text,car.get("id"))
     except Exception as exc: print(f"Saved search notifications failed: {type(exc).__name__}")
 
 def telegram_welcome(update):
@@ -506,7 +511,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":58,"release":"v82","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":59,"release":"v83","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -790,7 +795,7 @@ class Handler(SimpleHTTPRequestHandler):
                         moved=db.execute("UPDATE cars SET status='review',updated_at=? WHERE id=? AND status='active'",(now,cid))
                         if moved.rowcount: review_owner=car["owner_id"] if DATABASE_URL else car[0]
                 if review_owner:
-                    threading.Thread(target=notify_exchange_user,args=(review_owner,"⚠️ Объявление временно отправлено на проверку после нескольких жалоб. Оно скрыто из каталога, но доступно в разделе «Мои объявления»."),daemon=True).start()
+                    threading.Thread(target=notify_exchange_user,args=(review_owner,"⚠️ Объявление временно отправлено на проверку после нескольких жалоб. Оно скрыто из каталога, но доступно в разделе «Мои объявления».",cid),daemon=True).start()
                 return self.send_json({"ok":True,"under_review":total>=3},201)
             if path=="/api/exchanges":
                 target=int(data.get("target_car_id") or 0); offered=int(data.get("offered_car_id") or 0) or None; offer_text=clean_text(data.get("offer_text"),500); cash_amount=int(data.get("cash_amount") or 0)
@@ -809,7 +814,7 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("INSERT INTO exchanges(from_user,target_car_id,offered_car_id,message,offer_text,cash_amount,created_at) VALUES(?,?,?,?,?,?,?)",(uid,target,offered,clean_text(data.get("message"),500),offer_text,cash_amount,now))
                 target_name=target_row["name"] if DATABASE_URL else target_row[1]; offered_name=(offered_row["name"] if DATABASE_URL else offered_row[0]) if offered_row else offer_text
                 extra=f"\nДоплата: {cash_amount:,} ₽".replace(","," ") if cash_amount else ""
-                threading.Thread(target=notify_exchange_user,args=(target_owner,f"🔄 Новое предложение\n\nВам предлагают: {offered_name}\nЗа автомобиль: {target_name}{extra}\n\nОткройте КРУГ, чтобы посмотреть предложение."),daemon=True).start()
+                threading.Thread(target=notify_exchange_user,args=(target_owner,f"🔄 Новое предложение\n\nВам предлагают: {offered_name}\nЗа автомобиль: {target_name}{extra}\n\nОткройте КРУГ, чтобы посмотреть предложение.",target),daemon=True).start()
                 return self.send_json({"ok":True},201)
             return self.send_json({"error":"Маршрут не найден"},404)
         except (ValueError,json.JSONDecodeError) as exc: return self.send_json({"error":clean_text(exc,180) or "Проверьте данные"},400)
@@ -879,7 +884,7 @@ class Handler(SimpleHTTPRequestHandler):
                     db.execute("UPDATE reports SET status=? WHERE car_id=? AND status='new'",("approved" if action=="approve" else "blocked",car_id))
                 result="возвращено в каталог" if action=="approve" else "заблокировано"
                 record_audit(uid,"moderation_"+action,car_id)
-                threading.Thread(target=notify_exchange_user,args=(owner,f"Решение модерации: объявление «{car_name}» {result}."),daemon=True).start()
+                threading.Thread(target=notify_exchange_user,args=(owner,f"Решение модерации: объявление «{car_name}» {result}.",car_id),daemon=True).start()
                 return self.send_json({"ok":True,"action":action,"car_status":new_car_status})
             if path=="/api/profile":
                 role="dealer_pending" if data.get("role")=="dealer" else "private"; company=clean_text(data.get("company"),100)
@@ -891,15 +896,15 @@ class Handler(SimpleHTTPRequestHandler):
                 status={"accept":"accepted","reject":"rejected"}.get(data.get("action"))
                 if not status: return self.send_json({"error":"Неизвестное действие"},400)
                 with connect() as db:
-                    exchange_row=db.execute("""SELECT e.from_user,target.name AS target_name,offered.name AS offered_name
+                    exchange_row=db.execute("""SELECT e.from_user,e.target_car_id,target.name AS target_name,offered.name AS offered_name
                         FROM exchanges e JOIN cars target ON target.id=e.target_car_id LEFT JOIN cars offered ON offered.id=e.offered_car_id
                         WHERE e.id=? AND target.owner_id=? AND e.status='new'""",(int(exchange.group(1)),uid)).fetchone()
                     cur=db.execute("""UPDATE exchanges SET status=? WHERE id=? AND status='new'
                         AND EXISTS(SELECT 1 FROM cars WHERE cars.id=exchanges.target_car_id AND cars.owner_id=?)""",(status,int(exchange.group(1)),uid))
                 if cur.rowcount and exchange_row:
-                    sender=exchange_row["from_user"] if DATABASE_URL else exchange_row[0]; target_name=exchange_row["target_name"] if DATABASE_URL else exchange_row[1]
+                    sender=exchange_row["from_user"] if DATABASE_URL else exchange_row[0]; target_id=exchange_row["target_car_id"] if DATABASE_URL else exchange_row[1]; target_name=exchange_row["target_name"] if DATABASE_URL else exchange_row[2]
                     result="принято ✅" if status=="accepted" else "отклонено"
-                    threading.Thread(target=notify_exchange_user,args=(sender,f"🔄 Ваше предложение обмена на {target_name} {result}.\n\nОткройте КРУГ, чтобы посмотреть подробности."),daemon=True).start()
+                    threading.Thread(target=notify_exchange_user,args=(sender,f"🔄 Ваше предложение обмена на {target_name} {result}.\n\nОткройте КРУГ, чтобы посмотреть подробности.",target_id),daemon=True).start()
                 return self.send_json({"ok":bool(cur.rowcount),"status":status},200 if cur.rowcount else 403)
             m=re.fullmatch(r"/api/cars/(\d+)",path)
             if not m: return self.send_json({"error":"Маршрут не найден"},404)
