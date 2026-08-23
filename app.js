@@ -1,5 +1,6 @@
 /* KRUG source block 1 */
 const hero='/krug-hero.png';
+document.addEventListener('error',event=>{let image=event.target;if(image instanceof HTMLImageElement&&image.getAttribute('src')!==hero){image.src=hero}},true);
 const safeText=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const safeImageSrc=value=>{let src=String(value||'');return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(src)||/^(?:\/|assets\/)[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp)$/i.test(src)?src:hero};
 const krugEyeIcon=`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></svg>`;
