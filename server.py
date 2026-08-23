@@ -489,8 +489,9 @@ class Handler(SimpleHTTPRequestHandler):
     def require_origin(self):
         if request_origin_allowed(self.headers): return True
         self.send_json({"error":"Недопустимый источник запроса"},403); return False
-    def require_rate(self,scope,limit,window):
-        if rate_allowed((self.client_key(),scope),limit,window): return True
+    def require_rate(self,scope,limit,window,user_id=""):
+        identity="user:"+str(user_id)[:80] if str(user_id).strip() else "ip:"+self.client_key()
+        if rate_allowed((identity,scope),limit,window): return True
         self.send_json({"error":"Слишком много запросов. Попробуйте позже"},429); return False
     def safe_static(self,path):
         if path in {"/","/index.html","/favicon.ico","/favicon.svg"}: return True
@@ -511,8 +512,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
-        if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":64,"release":"v88","production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if not self.require_rate("get",300,60,uid if authenticated else ""): return
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":65,"release":"v89","production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
