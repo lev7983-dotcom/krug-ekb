@@ -586,6 +586,9 @@ krugCatalogNav?.addEventListener('click',()=>{document.querySelector('#catalog .
 /* KRUG source block 41 */
 // KRUG v44: catalogue search, filters and sorting run across the full server catalogue.
 const krugClientApplyCatalog=applyCatalog;let krugServerSearchTimer=0,krugServerSearchSeq=0;
+const KRUG_PUBLIC_CATALOG_CACHE='krug_public_catalog_v1';
+function krugSavePublicCatalog(items,total){try{localStorage.setItem(KRUG_PUBLIC_CATALOG_CACHE,JSON.stringify({saved_at:Date.now(),total:Number(total)||items.length,items:items.slice(0,20).map(({phone,vin,owner_id,seller_username,seller_name,images,...car})=>car)}))}catch(_){}}
+function krugReadPublicCatalog(){try{let cached=JSON.parse(localStorage.getItem(KRUG_PUBLIC_CATALOG_CACHE)||'null');return cached&&Date.now()-Number(cached.saved_at)<86400000&&Array.isArray(cached.items)?cached:null}catch(_){return null}}
 function krugServerCatalogueQuery(offset){
   let params=new URLSearchParams({paged:'1',limit:String(KRUG_PAGE_SIZE),offset:String(offset),sort:catalogSort?.value||'new'}),query=krugSearchWords(catalogSearch?.value||'').join(' ');
   if(query)params.set('q',query);if(filterTransmission.value)params.set('transmission',filterTransmission.value);if(filterBody.value)params.set('body',filterBody.value);if(filterDrive.value)params.set('drive',filterDrive.value);
@@ -601,6 +604,19 @@ loadKrugCarPage=async function(reset=false){
 applyCatalog=function(){clearTimeout(krugServerSearchTimer);krugServerSearchTimer=setTimeout(()=>loadKrugCarPage(true),220)};
 catalogSearch?.addEventListener('input',applyCatalog);catalogSort?.addEventListener('change',applyCatalog);[filterTransmission,filterBody,filterDrive].forEach(field=>field?.addEventListener('change',applyCatalog));
 setTimeout(()=>loadKrugCarPage(true),0);
+
+// Keep the last public catalogue available through a brief connection loss.
+const krugOnlineCarPage=loadKrugCarPage;
+loadKrugCarPage=async function(reset=false){
+  try{
+    await krugOnlineCarPage(reset);
+    if(reset&&cars.length&&krugFilterResult.textContent!=='Не удалось обновить каталог')krugSavePublicCatalog(cars,krugCatalogTotal);
+  }catch(error){throw error}
+  if(reset&&krugFilterResult.textContent==='Не удалось обновить каталог'){
+    let cached=krugReadPublicCatalog();
+    if(cached?.items.length){cars=cached.items;krugCatalogOffset=cars.length;krugCatalogHasMore=false;krugCatalogTotal=Number(cached.total)||cars.length;render(cars,'catalogCards');paintKrugMore();krugFilterResult.textContent='Показан сохранённый каталог · обновим при подключении'}
+  }
+};
 
 /* KRUG source block 42 */
 const KRUG_POLICY_VERSION='2026-08-16';
