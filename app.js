@@ -41,7 +41,15 @@ const krugTgUser=window.Telegram?.WebApp?.initDataUnsafe?.user;
 const krugUserId=String(krugTgUser?.id||(location.protocol==='file:'?localStorage.getItem('krug_user'):'')||'anonymous');
 if(location.protocol==='file:')localStorage.setItem('krug_user',krugUserId);else localStorage.removeItem('krug_user');
 const krugInitData=window.Telegram?.WebApp?.initData||'';
-const krugApi=(url,options={})=>fetch(url,{...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}});
+const krugReadRequests=new Map();
+const krugApi=(url,options={})=>{
+  let request={...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}},method=String(options.method||'GET').toUpperCase();
+  if(method!=='GET'){krugReadRequests.clear();return fetch(url,request)}
+  if(url!=='/api/me')return fetch(url,request);
+  let cached=krugReadRequests.get(url),now=Date.now();
+  if(!cached||now-cached.created>400){cached={created:now,promise:fetch(url,request)};krugReadRequests.set(url,cached)}
+  return cached.promise.then(response=>response.clone());
+};
 function card(c){let safe=String(c.name).replaceAll("'","&#39;");return `<article class="car" onclick="openCarV2(${c.id||0},'${safe}',${c.price},'${c.pos||'50% 50%'}')"><div class="car-media"><img src="${hero}" style="object-position:${c.pos||'50% 50%'}" alt="${c.name}"><span class="badge ${c.urgent?'urgent':''}">${c.urgent?'⚡ Срочно':c.type}</span><button class="heart ${c.favourite?'saved':''}" onclick="saveV2(event,this,${c.id||0})">${c.favourite?'♥':'♡'}</button></div><div class="car-body"><div class="car-top"><div><h3>${c.name}</h3><div class="meta">${c.year} · ${c.km}</div></div><div class="price">${rub(c.price)}</div></div><div class="tags"><span class="tag">Екатеринбург</span><span class="tag">ID ${c.id||'демо'}</span>${c.type==='Обмен'?'<span class="tag">↔ Рассмотрю обмен</span>':''}</div></div></article>`}
 async function krugLoadCars(){if(location.protocol==='file:')return;try{let r=await krugApi('/api/cars');if(!r.ok)throw Error('api');cars=await r.json();renderAll();await krugLoadProfile()}catch(e){toast('Не удалось обновить объявления')}}
 async function saveV2(e,b,id){e.stopPropagation();if(!id)return;let r=await krugApi(`/api/cars/${id}/favourite`,{method:'POST',body:'{}'}),d=await r.json();if(!r.ok)return toast(d.error||'Ошибка');b.classList.toggle('saved',d.favourite);b.textContent=d.favourite?'♥':'♡';toast(d.favourite?'Добавлено в избранное':'Удалено из избранного');krugLoadProfile()}
