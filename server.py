@@ -29,6 +29,7 @@ OPERATOR_ADDRESS=os.environ.get("LEGAL_OPERATOR_ADDRESS","").strip()
 DATA_RESIDENCY_CONFIRMED=os.environ.get("DATA_RESIDENCY_RF_CONFIRMED","")=="1"
 LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS and DATA_RESIDENCY_CONFIRMED)
 OPEN_BETA=os.environ.get("KRUG_OPEN_BETA","1")=="1" and not LEGAL_READY
+PRODUCTION=os.environ.get("KRUG_ENV","").strip().lower()=="production"
 WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
 TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting","updates_received":0,"last_update_at":"","welcome_sent":0,"last_delivery_error":""}
 PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
@@ -511,7 +512,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":61,"release":"v85","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":62,"release":"v86","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -520,6 +521,7 @@ class Handler(SimpleHTTPRequestHandler):
             try: limit=max(1,min(int(query.get("limit",["20"])[0]),50)) if paged else None; offset=max(0,min(int(query.get("offset",["0"])[0]),1_000_000)) if paged else 0
             except ValueError: return self.send_json({"error":"Некорректная пагинация"},400)
             conditions=["c.status='active'"]; filter_params=[]
+            if PRODUCTION: conditions.append("c.owner_id IS NOT NULL AND c.owner_id<>'demo'")
             for token in normalize_search(query.get("q",[""])[0]).split(): conditions.append("c.search_key LIKE ?"); filter_params.append(f"%{token}%")
             for key,column in (("transmission","c.transmission"),("body","c.body_type"),("drive","c.drive"),("fuel","c.fuel")):
                 value=str(query.get(key,[""])[0])[:30]
@@ -555,6 +557,7 @@ class Handler(SimpleHTTPRequestHandler):
                     EXISTS(SELECT 1 FROM favourites f WHERE f.car_id=c.id AND f.user_id=?) AS faved
                     FROM cars c LEFT JOIN users u ON u.id=c.owner_id
                     WHERE c.id=? AND (c.status='active' OR c.owner_id=?)""",(uid,int(detail.group(1)),uid)).fetchone()
+            if PRODUCTION and row and str(row["owner_id"] or "").strip() in {"", "demo"}: row=None
             if not row: return self.send_json({"error":"Объявление не найдено"},404)
             with connect() as db:
                 if authenticated and has_current_consent(uid) and str(row["owner_id"])!=str(uid):
@@ -565,9 +568,10 @@ class Handler(SimpleHTTPRequestHandler):
             data=car_detail_payload(row,row["faved"],uid,authenticated); data["views"]=vr["count"] if DATABASE_URL else vr[0]; data["favourites_count"]=favr["count"] if DATABASE_URL else favr[0]; data["previous_price"]=int(phr["old_price"] if DATABASE_URL else phr[0]) if phr and int(phr["old_price"] if DATABASE_URL else phr[0])>data["price"] else None
             return self.send_json(data)
         if path=="/api/stats":
+            production_scope=" AND owner_id IS NOT NULL AND owner_id<>'demo'" if PRODUCTION else ""
             with connect() as db:
-                ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)",(NOW().isoformat(),)).fetchone()
-                ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'").fetchone()
+                ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)"+production_scope,(NOW().isoformat(),)).fetchone()
+                ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'"+production_scope).fetchone()
             return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
         personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/admin/staff","/api/admin/reports","/api/my-cars","/api/exchanges"}
         if path in personal or path.startswith("/api/admin/"):
