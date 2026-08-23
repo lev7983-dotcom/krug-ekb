@@ -42,8 +42,14 @@ const krugUserId=String(krugTgUser?.id||(location.protocol==='file:'?localStorag
 if(location.protocol==='file:')localStorage.setItem('krug_user',krugUserId);else localStorage.removeItem('krug_user');
 const krugInitData=window.Telegram?.WebApp?.initData||'';
 const krugReadRequests=new Map();
+const krugSessionRequests=new Map();
 const krugApi=(url,options={})=>{
   let request={...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':krugInitData,'X-Krug-User':krugUserId,...options.headers}},method=String(options.method||'GET').toUpperCase();
+  if(method==='POST'&&url==='/api/session'){
+    let key=String(options.body||''),cached=krugSessionRequests.get(key),now=Date.now();
+    if(!cached||now-cached.created>2000){cached={created:now,promise:fetch(url,request)};krugSessionRequests.set(key,cached)}
+    return cached.promise.then(response=>{krugReadRequests.clear();return response.clone()});
+  }
   if(method!=='GET'){krugReadRequests.clear();return fetch(url,request)}
   if(url!=='/api/me')return fetch(url,request);
   let cached=krugReadRequests.get(url),now=Date.now();
