@@ -29,7 +29,7 @@ OPERATOR_ADDRESS=os.environ.get("LEGAL_OPERATOR_ADDRESS","").strip()
 DATA_RESIDENCY_CONFIRMED=os.environ.get("DATA_RESIDENCY_RF_CONFIRMED","")=="1"
 LEGAL_READY=ALLOW_DEV_AUTH or bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS and DATA_RESIDENCY_CONFIRMED)
 OPEN_BETA=os.environ.get("KRUG_OPEN_BETA","1")=="1" and not LEGAL_READY
-PRODUCTION=os.environ.get("KRUG_ENV","").strip().lower()=="production"
+PRODUCTION=os.environ.get("KRUG_ENV","").strip().lower()=="production" or bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
 WEBHOOK_SECRET=(os.environ.get("TELEGRAM_WEBHOOK_SECRET") or (hashlib.sha256(BOT_TOKEN.encode()).hexdigest()[:32] if BOT_TOKEN else "")).strip()
 TELEGRAM_STATUS={"configured":bool(BOT_TOKEN),"api_ok":False,"webhook_ok":False,"bot_username":"","error":"token_missing" if not BOT_TOKEN else "starting","updates_received":0,"last_update_at":"","welcome_sent":0,"last_delivery_error":""}
 PUBLIC_ORIGIN=f"{urlparse(PUBLIC_URL).scheme}://{urlparse(PUBLIC_URL).netloc}" if urlparse(PUBLIC_URL).netloc else ""
@@ -512,7 +512,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":62,"release":"v86","personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":63,"release":"v87","production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
