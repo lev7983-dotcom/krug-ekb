@@ -674,6 +674,21 @@ async function saveKrugSearchAlert(){let filters=krugCurrentSearchFilters(),hasF
 async function removeKrugSearchAlert(){try{await krugJson('/api/subscriptions?kind=search',{method:'DELETE'});krugSearchSubscription=null;paintKrugSearchAlert();toast('Уведомление о поиске отключено')}catch(error){toast(error.message)}}
 krugSearchAlertSave.addEventListener('click',saveKrugSearchAlert);krugSearchAlertRemove.addEventListener('click',removeKrugSearchAlert);krugCatalogNav?.addEventListener('click',loadKrugSearchAlert);paintKrugSearchAlert();
 
+async function showKrugSubscriptions(){
+  if(!await krugPersonalReady())return openKrugReadiness();
+  showKrugPersonalLoading('Мои подписки');
+  try{
+    let data=await krugJson('/api/subscriptions'),search=data.search||null;
+    krugSubscribed=!!data.urgent;krugSearchSubscription=search;paintSubscription();paintKrugSearchAlert();
+    document.querySelector('#catalog .page-head p').textContent='Уведомления КРУГ';
+    document.getElementById('catalogCards').innerHTML=`<div class="panel subscription-manager"><div class="eyebrow"><span class="dot"></span> срочные авто</div><h3>${krugSubscribed?'Уведомления включены':'Уведомления выключены'}</h3><p class="meta">Сообщим в Telegram о новых автомобилях с отметкой «Срочно».</p><button type="button" class="btn ${krugSubscribed?'back':'lime'}" onclick="toggleKrugUrgentFromProfile()">${krugSubscribed?'Отключить':'Включить уведомления'}</button></div><div class="panel subscription-manager"><div class="eyebrow"><span class="dot"></span> сохранённый поиск</div><h3>${search?safeText(search.name):'Поиск не сохранён'}</h3><p class="meta">${search?'Сообщим, когда появится автомобиль по этим параметрам.':'Выберите марку, цену или характеристики в каталоге.'}</p><button type="button" class="btn lime" onclick="openKrugSearchFromProfile()">${search?'Изменить параметры':'Настроить поиск'}</button>${search?'<button type="button" class="btn back" onclick="removeKrugSearchFromProfile()">Отключить</button>':''}</div>`;
+  }catch(_){finishKrugPersonalLoading('showKrugSubscriptions')}
+}
+async function toggleKrugUrgentFromProfile(){await subscribe(document.querySelector('#urgent [onclick="subscribe(this)"]'));await showKrugSubscriptions()}
+function openKrugSearchFromProfile(){go('catalog');document.querySelector('#catalog .page-head h1').textContent='Все автомобили';document.querySelector('#catalog .page-head p').textContent='Екатеринбург · проверенные объявления';loadKrugSearchAlert();setTimeout(()=>catalogSearch?.focus(),60)}
+async function removeKrugSearchFromProfile(){await removeKrugSearchAlert();await showKrugSubscriptions()}
+if(profileButtons[3])profileButtons[3].onclick=showKrugSubscriptions;
+
 /* KRUG source block 44 */
 // Complete vehicle essentials used by buyers when comparing real listings.
 const krugEngineFields=document.createElement('div');krugEngineFields.className='engine-fields';
