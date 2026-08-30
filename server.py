@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v114"
+APP_RELEASE="v115"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -279,6 +279,21 @@ def validated_images(values,max_count=8,max_total=8_000_000):
         result.append(checked)
     return result
 
+def backfill_missing_thumbnails(limit=25):
+    """Repair legacy listings gradually without delaying startup indefinitely."""
+    repaired=0
+    try:
+        with connect() as db:
+            rows=db.execute("SELECT id,image FROM cars WHERE COALESCE(thumbnail,'')='' AND COALESCE(image,'')<>'' ORDER BY id DESC LIMIT ?",(int(limit),)).fetchall()
+            for row in rows:
+                car_id=row["id"] if DATABASE_URL else row[0]; source=row["image"] if DATABASE_URL else row[1]
+                try: thumbnail=validated_image(source,250_000,480)
+                except ValueError: continue
+                db.execute("UPDATE cars SET thumbnail=? WHERE id=? AND COALESCE(thumbnail,'')=''",(thumbnail,car_id)); repaired+=1
+    except Exception as exc: print(f"Thumbnail backfill failed: {type(exc).__name__}")
+    if repaired: print(f"Thumbnail backfill repaired: {repaired}")
+    return repaired
+
 def has_current_consent(user_id):
     try:
         with connect() as db: row=db.execute("SELECT privacy_consent_version,privacy_consent_at,rules_version,rules_accepted_at FROM users WHERE id=?",(str(user_id),)).fetchone()
@@ -531,7 +546,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60,uid if authenticated else ""): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":90,"release":APP_RELEASE,"commit":DEPLOY_COMMIT,"uptime_seconds":max(0,int(time.time()-PROCESS_STARTED_AT)),"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":91,"release":APP_RELEASE,"commit":DEPLOY_COMMIT,"uptime_seconds":max(0,int(time.time()-PROCESS_STARTED_AT)),"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
@@ -977,7 +992,7 @@ class SecureHTTPServer(ThreadingHTTPServer):
     request_queue_size=128
 
 if __name__=="__main__":
-    port=int(os.environ.get("PORT","4173")); init_db(); purge_expired_data()
+    port=int(os.environ.get("PORT","4173")); init_db(); backfill_missing_thumbnails(); purge_expired_data()
     if not BOT_TOKEN and not ALLOW_DEV_AUTH: print("WARNING: Telegram token is missing; all personal actions are disabled")
     if not LEGAL_READY: print("WARNING: legal operator details or confirmed Russian data residency are missing; new consent cannot be collected")
     threading.Thread(target=retention_loop,daemon=True).start(); threading.Thread(target=setup_telegram_webhook,daemon=True).start(); print(f"KRUG on {port}"); SecureHTTPServer(("0.0.0.0",port),Handler).serve_forever()
