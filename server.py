@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v112"
+APP_RELEASE="v113"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -168,7 +168,7 @@ def init_db():
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
             now=NOW().isoformat(); urgent=(NOW()+timedelta(hours=24)).isoformat()
-            db.executemany("INSERT INTO cars(name,price,year,km,type,urgent,pos,created_at,updated_at,urgent_until) VALUES(?,?,?,?,?,?,?,?,?,?)",[(*x,now,now,urgent if x[5] else None) for x in seed])
+            db.executemany("INSERT INTO cars(name,price,year,km,type,urgent,pos,created_at,updated_at,urgent_until,search_key) VALUES(?,?,?,?,?,?,?,?,?,?,?)",[(*x,now,now,urgent if x[5] else None,normalize_search(x[0])) for x in seed])
 
 def validate_telegram_init_data(raw,max_age=INIT_DATA_MAX_AGE):
     """Return the verified Telegram user, or None when initData is invalid/expired."""
@@ -209,7 +209,8 @@ CYRILLIC_LATIN=dict(zip("абвгдежзийклмнопрстуфхцчшщъ�
 def normalize_search(value):
     words=re.sub(r"[^a-zа-я0-9]+"," ",str(value or "").lower().replace("ё","е")).split(); result=[]
     for word in words:
-        if word in SEARCH_ALIASES: result.append(SEARCH_ALIASES[word]); continue
+        if word in SEARCH_ALIASES:
+            result.append(SEARCH_ALIASES[word].replace("c","k").replace("q","k").replace("y","i")); continue
         result.append("".join(CYRILLIC_LATIN.get(letter,letter) for letter in word).replace("c","k").replace("q","k").replace("y","i"))
     return " ".join(result)
 
@@ -530,7 +531,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not self.valid_request_target(): return
         parsed=urlparse(self.path); path=parsed.path; query=parse_qs(parsed.query); uid,authenticated,_=auth_context(self.headers,query=query)
         if not self.require_rate("get",300,60,uid if authenticated else ""): return
-        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":88,"release":APP_RELEASE,"commit":DEPLOY_COMMIT,"uptime_seconds":max(0,int(time.time()-PROCESS_STARTED_AT)),"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
+        if path=="/api/health": return self.send_json({"ok":True,"service":"krug","version":89,"release":APP_RELEASE,"commit":DEPLOY_COMMIT,"uptime_seconds":max(0,int(time.time()-PROCESS_STARTED_AT)),"production":PRODUCTION,"personal_actions":bool(LEGAL_READY or OPEN_BETA),"testing_mode":OPEN_BETA,"closed_beta":bool(TESTER_IDS and not OPEN_BETA),"telegram":dict(TELEGRAM_STATUS)})
         if path=="/api/legal":
             beta=bool(authenticated and personal_ready(uid) and not LEGAL_READY)
             return self.send_json({"operator_name":OPERATOR_NAME,"operator_email":OPERATOR_EMAIL,"operator_address":OPERATOR_ADDRESS,"operator_configured":bool(OPERATOR_NAME and OPERATOR_EMAIL and OPERATOR_ADDRESS),"policy_version":POLICY_VERSION,"rules_version":RULES_VERSION,"ready":bool(LEGAL_READY or OPEN_BETA or beta),"testing_mode":bool(OPEN_BETA),"closed_beta":bool(beta and not OPEN_BETA),"data_residency_rf":DATA_RESIDENCY_CONFIRMED})
