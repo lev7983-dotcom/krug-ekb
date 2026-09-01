@@ -1052,3 +1052,21 @@ editCar=async function(id){
     contactPublicInput.checked=!!d.contact_consent_at&&d.consent_version===KRUG_POLICY_VERSION;listingPrivacyInput.checked=krugPrivacyReady;legalAccepted.checked=true;paintContactHint();paintKrugListingQuality();title.textContent='Изменить объявление';submit.textContent='Сохранить изменения';
   }catch(error){krugEditingId=0;title.textContent='Разместить авто';toast(error.message);setTimeout(showMyCars,300)}finally{submit.disabled=false}
 };
+
+/* KRUG source block 64 */
+// A forwarded Telegram post or a voluntarily submitted VK link becomes a private draft.
+let krugImportLoaded=0;
+async function loadKrugImportedDraft(){
+  const importId=Number(new URLSearchParams(location.search).get('import'))||0;
+  if(!importId||krugImportLoaded===importId||!krugPrivacyReady||!krugInitData)return;
+  krugImportLoaded=importId;
+  try{
+    const d=await krugJson(`/api/imports/${importId}`);
+    krugEditingId=0;carName.value=d.name||'';carYear.value=Number(d.year)||'';carPrice.value=Number(d.price)||'';carKm.value=Number(d.km)||'';carPhone.value=d.phone||'';
+    carDescription.value=[d.description||'',d.source_url?`Источник: ${d.source_url}`:''].filter(Boolean).join('\n\n').slice(0,2000);
+    contactPublicInput.checked=false;listingPrivacyInput.checked=krugPrivacyReady;legalAccepted.checked=true;go('create');nextStep(1);saveKrugDraft();paintKrugListingQuality();toast('Черновик заполнен — внимательно проверьте данные');
+  }catch(error){krugImportLoaded=0;toast(error.message||'Не удалось загрузить черновик')}
+}
+const acceptKrugPrivacyBeforeImport=acceptKrugPrivacy;
+acceptKrugPrivacy=async function(){await acceptKrugPrivacyBeforeImport();if(krugPrivacyReady)await loadKrugImportedDraft()};
+setTimeout(loadKrugImportedDraft,1200);

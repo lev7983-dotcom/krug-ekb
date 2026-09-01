@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v115"
+APP_RELEASE="v117"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -120,6 +120,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS price_history(id {generic_id}, car_id {ref_id} NOT NULL, old_price INTEGER NOT NULL, new_price INTEGER NOT NULL, changed_at TEXT NOT NULL, FOREIGN KEY(car_id) REFERENCES cars(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS staff_roles(user_id TEXT PRIMARY KEY, role TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS audit_log(id {generic_id}, actor_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT DEFAULT '', created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS import_drafts(id {generic_id}, user_id TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'telegram', source_url TEXT DEFAULT '', original_text TEXT DEFAULT '', parsed_json TEXT NOT NULL DEFAULT '{{}}', status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL);
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -164,6 +165,7 @@ def init_db():
         add_column(db,"users","rules_version","TEXT DEFAULT ''")
         add_column(db,"users","rules_accepted_at","TEXT DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_import_drafts_user_created ON import_drafts(user_id,created_at)")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
@@ -294,6 +296,15 @@ def backfill_missing_thumbnails(limit=25):
     if repaired: print(f"Thumbnail backfill repaired: {repaired}")
     return repaired
 
+def start_thumbnail_backfill(batch_size=25):
+    """Repair every legacy thumbnail in small background batches."""
+    def worker():
+        while True:
+            repaired=backfill_missing_thumbnails(batch_size)
+            if repaired<batch_size: return
+            time.sleep(1)
+    threading.Thread(target=worker,name="thumbnail-backfill",daemon=True).start()
+
 def has_current_consent(user_id):
     try:
         with connect() as db: row=db.execute("SELECT privacy_consent_version,privacy_consent_at,rules_version,rules_accepted_at FROM users WHERE id=?",(str(user_id),)).fetchone()
@@ -343,11 +354,12 @@ def car_detail_payload(row,faved,user_id,authenticated):
 
 def purge_expired_data():
     try:
-        deleted_before=(NOW()-timedelta(days=30)).isoformat(); views_before=(NOW()-timedelta(days=180)).isoformat(); audit_before=(NOW()-timedelta(days=365)).isoformat()
+        deleted_before=(NOW()-timedelta(days=30)).isoformat(); views_before=(NOW()-timedelta(days=180)).isoformat(); audit_before=(NOW()-timedelta(days=365)).isoformat(); imports_before=(NOW()-timedelta(days=7)).isoformat()
         with connect() as db:
             db.execute("DELETE FROM cars WHERE status='deleted' AND COALESCE(updated_at,created_at)<?",(deleted_before,))
             db.execute("DELETE FROM car_views WHERE created_at<?",(views_before,))
             db.execute("DELETE FROM audit_log WHERE created_at<?",(audit_before,))
+            db.execute("DELETE FROM import_drafts WHERE created_at<?",(imports_before,))
     except Exception as exc: print(f"Retention cleanup failed: {type(exc).__name__}")
 
 def retention_loop():
@@ -367,10 +379,46 @@ def car_dict(row,faved=False):
     if not d["images"] and d.get("image"): d["images"]=[d["image"]]
     d["favourite"]=bool(faved); return d
 
-def web_app_url(car_id=None):
+def web_app_url(car_id=None,import_id=None):
     separator="&" if "?" in PUBLIC_URL else "?"
     url=f"{PUBLIC_URL}{separator}app={APP_RELEASE}"
-    return f"{url}&car={int(car_id)}" if car_id else url
+    if car_id: return f"{url}&car={int(car_id)}"
+    return f"{url}&import={int(import_id)}" if import_id else url
+
+def parse_imported_listing(text):
+    """Extract only obvious vehicle fields; the user must verify every value."""
+    value=clean_text(text,5000); lines=[line.strip(" •\t-") for line in value.splitlines() if line.strip()]
+    year_match=re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)",value)
+    km_match=re.search(r"(?<!\d)(\d[\d\s.]{0,10})\s*(?:км|km)\b",value,re.I)
+    price_match=re.search(r"(?<!\d)(\d[\d\s.]{2,14})\s*(?:₽|руб(?:лей|ля|ль)?\.?|р\.)",value,re.I)
+    phone_match=re.search(r"(?:\+7|8)[\s()\-]*\d{3}[\s()\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}",value)
+    source_match=re.search(r"https?://(?:www\.)?(?:vk\.com|t\.me)/[^\s]+",value,re.I)
+    def number(match): return int(re.sub(r"\D","",match.group(1))) if match else 0
+    title=next((line for line in lines if not line.lower().startswith(("http://","https://"))),"")
+    phone=""
+    if phone_match:
+        try: phone=normalize_phone(phone_match.group(0))
+        except ValueError: pass
+    return {"name":clean_text(title,80),"year":number(year_match),"price":number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
+
+def telegram_import_listing(update):
+    message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
+    chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
+    if not text or text.startswith("/") or chat.get("type")!="private" or not chat_id or str(chat_id)!=str(user_id): return
+    forwarded=bool(message.get("forward_origin") or message.get("forward_from_chat") or message.get("forward_date"))
+    source_type="vk" if re.search(r"https?://(?:www\.)?vk\.com/",text,re.I) else "telegram"
+    if not forwarded and source_type!="vk": return
+    parsed=parse_imported_listing(text); now=NOW().isoformat()
+    try:
+        with connect() as db:
+            params=(str(user_id),source_type,parsed.get("source_url") or "",clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now)
+            if DATABASE_URL:
+                row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
+            else:
+                draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?)",params).lastrowid)
+        label="поста ВК" if source_type=="vk" else "пересланного сообщения"
+        telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
+    except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
 
 def record_notification_delivery(ok,error=""):
     key="notifications_sent" if ok else "notifications_failed"
@@ -688,6 +736,14 @@ class Handler(SimpleHTTPRequestHandler):
                     LEFT JOIN users sender ON sender.id=e.from_user
                     WHERE e.from_user=? OR target.owner_id=? ORDER BY e.id DESC""",(uid,uid)).fetchall()
             return self.send_json([dict(r) for r in rows])
+        imported=re.fullmatch(r"/api/imports/(\d+)",path)
+        if imported:
+            if not self.require_auth(authenticated): return
+            if not self.require_consent(uid): return
+            with connect() as db: row=db.execute("SELECT id,source_type,source_url,parsed_json,created_at FROM import_drafts WHERE id=? AND user_id=? AND status='draft'",(int(imported.group(1)),uid)).fetchone()
+            if not row: return self.send_json({"error":"Черновик не найден или уже истёк"},404)
+            payload=dict(row); parsed=json.loads(payload.pop("parsed_json") or "{}"); payload.update(parsed)
+            return self.send_json(payload)
         if path=="/api/export":
             if not self.require_auth(authenticated): return
             with connect() as db:
@@ -714,6 +770,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if not supplied or not hmac.compare_digest(supplied,WEBHOOK_SECRET): return self.send_json({"error":"Not found"},404)
                 TELEGRAM_STATUS["updates_received"]=int(TELEGRAM_STATUS.get("updates_received") or 0)+1; TELEGRAM_STATUS["last_update_at"]=NOW().isoformat()
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
+                threading.Thread(target=telegram_import_listing,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
@@ -873,7 +930,7 @@ class Handler(SimpleHTTPRequestHandler):
             deleted_actor="deleted:"+hashlib.sha256((WEBHOOK_SECRET+":"+uid).encode("utf-8")).hexdigest()[:20]
             with connect() as db:
                 owned=db.execute("SELECT id FROM cars WHERE owner_id=?",(uid,)).fetchall(); car_ids=[int(r["id"] if DATABASE_URL else r[0]) for r in owned]
-                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,)); db.execute("DELETE FROM car_views WHERE viewer_id=?",(uid,)); db.execute("DELETE FROM staff_roles WHERE user_id=?",(uid,))
+                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,)); db.execute("DELETE FROM car_views WHERE viewer_id=?",(uid,)); db.execute("DELETE FROM staff_roles WHERE user_id=?",(uid,)); db.execute("DELETE FROM import_drafts WHERE user_id=?",(uid,))
                 db.execute("UPDATE staff_roles SET created_by=? WHERE created_by=?",(deleted_actor,uid))
                 db.execute("UPDATE audit_log SET actor_id=? WHERE actor_id=?",(deleted_actor,uid))
                 db.execute("UPDATE audit_log SET target='' WHERE target=? OR target LIKE ?",(uid,uid+":%"))
@@ -992,7 +1049,7 @@ class SecureHTTPServer(ThreadingHTTPServer):
     request_queue_size=128
 
 if __name__=="__main__":
-    port=int(os.environ.get("PORT","4173")); init_db(); backfill_missing_thumbnails(); purge_expired_data()
+    port=int(os.environ.get("PORT","4173")); init_db(); start_thumbnail_backfill(); purge_expired_data()
     if not BOT_TOKEN and not ALLOW_DEV_AUTH: print("WARNING: Telegram token is missing; all personal actions are disabled")
     if not LEGAL_READY: print("WARNING: legal operator details or confirmed Russian data residency are missing; new consent cannot be collected")
     threading.Thread(target=retention_loop,daemon=True).start(); threading.Thread(target=setup_telegram_webhook,daemon=True).start(); print(f"KRUG on {port}"); SecureHTTPServer(("0.0.0.0",port),Handler).serve_forever()
