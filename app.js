@@ -1070,3 +1070,17 @@ async function loadKrugImportedDraft(){
 const acceptKrugPrivacyBeforeImport=acceptKrugPrivacy;
 acceptKrugPrivacy=async function(){await acceptKrugPrivacyBeforeImport();if(krugPrivacyReady)await loadKrugImportedDraft()};
 setTimeout(loadKrugImportedDraft,1200);
+
+/* KRUG source block 65 */
+// v118: phone-friendly allowlist for partner Telegram/VK sources.
+const krugSourcesButton=document.createElement('button');krugSourcesButton.className='menu-item admin-menu';krugSourcesButton.innerHTML='Партнёрские источники <span>›</span>';document.querySelector('#profile .menu-list').append(krugSourcesButton);
+async function showPartnerSources(){
+  try{
+    const sources=await krugJson('/api/admin/partner-sources');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Источники';
+    document.getElementById('catalogCards').innerHTML=`<div class="panel"><div class="eyebrow"><span class="dot"></span>только с разрешения владельца</div><h3>Подключить источник</h3><p class="meta">Telegram: добавьте КРУГ в партнёрскую группу и укажите её ID вида −100… VK подключается только через официальный Callback API — без парсинга страниц.</p><div class="team-form"><select id="partnerPlatform"><option value="telegram">Telegram-группа</option><option value="vk">Сообщество VK</option></select><input id="partnerRef" inputmode="text" placeholder="ID группы или сообщества"><input id="partnerTitle" placeholder="Понятное название"><button class="btn lime" onclick="addPartnerSource()">Сохранить источник</button></div></div>`+sources.map(s=>`<div class="panel"><div class="eyebrow"><span class="dot"></span>${s.platform==='telegram'?'Telegram':'VK'}</div><h3>${safeText(s.title||'Источник')}</h3><div class="meta">ID ${safeText(s.source_ref)} · ${s.status==='active'?'активен':'отключён'}</div>${s.status==='active'?`<div class="manage-actions"><button class="btn back" onclick="disablePartnerSource(${Number(s.id)})">Отключить</button></div>`:''}</div>`).join('');
+  }catch(error){toast(error.message)}
+}
+async function addPartnerSource(){try{const platform=document.getElementById('partnerPlatform').value,source_ref=document.getElementById('partnerRef').value.trim(),title=document.getElementById('partnerTitle').value.trim();await krugJson('/api/admin/partner-sources',{method:'POST',body:JSON.stringify({platform,source_ref,title})});toast('Источник сохранён');await showPartnerSources()}catch(error){toast(error.message)}}
+function disablePartnerSource(id){askKrugConfirm({title:'Отключить источник?',text:'Новые сообщения из него больше не будут попадать в черновики.',action:'Отключить',danger:true,onConfirm:async()=>{await krugJson(`/api/admin/partner-sources/${Number(id)}`,{method:'DELETE'});toast('Источник отключён');await showPartnerSources()}})}
+krugSourcesButton.onclick=showPartnerSources;
+const krugLoadProfileBeforeSources=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeSources();try{const d=await krugJson('/api/me'),role=d.staff_role||'';krugSourcesButton.classList.toggle('show',role==='owner'||role==='admin')}catch(_){krugSourcesButton.classList.remove('show')}};

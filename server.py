@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v117"
+APP_RELEASE="v118"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -121,6 +121,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS staff_roles(user_id TEXT PRIMARY KEY, role TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE);
         CREATE TABLE IF NOT EXISTS audit_log(id {generic_id}, actor_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT DEFAULT '', created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS import_drafts(id {generic_id}, user_id TEXT NOT NULL, source_type TEXT NOT NULL DEFAULT 'telegram', source_url TEXT DEFAULT '', original_text TEXT DEFAULT '', parsed_json TEXT NOT NULL DEFAULT '{{}}', status TEXT NOT NULL DEFAULT 'draft', created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS partner_sources(id {generic_id}, owner_id TEXT NOT NULL, platform TEXT NOT NULL, source_ref TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(platform,source_ref));
         """)
         add_column(db,"cars","owner_id","TEXT NOT NULL DEFAULT 'demo'")
         add_column(db,"cars","status","TEXT NOT NULL DEFAULT 'active'")
@@ -166,6 +167,7 @@ def init_db():
         add_column(db,"users","rules_accepted_at","TEXT DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_import_drafts_user_created ON import_drafts(user_id,created_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_partner_sources_owner ON partner_sources(owner_id,status)")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
@@ -401,21 +403,33 @@ def parse_imported_listing(text):
         except ValueError: pass
     return {"name":clean_text(title,80),"year":number(year_match),"price":number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
 
+def create_import_draft(user_id,source_type,text,source_url=""):
+    """Create a private, user-bound draft. Imported content is never auto-published."""
+    parsed=parse_imported_listing(text); now=NOW().isoformat()
+    params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now)
+    with connect() as db:
+        if DATABASE_URL:
+            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?) RETURNING id",params).fetchone(); return int(row["id"])
+        return int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?)",params).lastrowid)
+
 def telegram_import_listing(update):
     message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
     chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
-    if not text or text.startswith("/") or chat.get("type")!="private" or not chat_id or str(chat_id)!=str(user_id): return
+    if not text or text.startswith("/") or not chat_id: return
+    if chat.get("type")!="private":
+        try:
+            with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
+            if not source: return
+            owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); draft_id=create_import_draft(owner_id,"telegram_group",text)
+            telegram_call("sendMessage",{"chat_id":owner_id,"text":"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
+        except Exception as exc: print(f"Partner Telegram import failed: {type(exc).__name__}")
+        return
+    if str(chat_id)!=str(user_id): return
     forwarded=bool(message.get("forward_origin") or message.get("forward_from_chat") or message.get("forward_date"))
     source_type="vk" if re.search(r"https?://(?:www\.)?vk\.com/",text,re.I) else "telegram"
     if not forwarded and source_type!="vk": return
-    parsed=parse_imported_listing(text); now=NOW().isoformat()
     try:
-        with connect() as db:
-            params=(str(user_id),source_type,parsed.get("source_url") or "",clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now)
-            if DATABASE_URL:
-                row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
-            else:
-                draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?)",params).lastrowid)
+        draft_id=create_import_draft(user_id,source_type,text)
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
@@ -656,7 +670,7 @@ class Handler(SimpleHTTPRequestHandler):
                 ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)"+production_scope,(NOW().isoformat(),)).fetchone()
                 ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'"+production_scope).fetchone()
             return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
-        personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/admin/staff","/api/admin/reports","/api/my-cars","/api/exchanges"}
+        personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/admin/staff","/api/admin/reports","/api/admin/partner-sources","/api/my-cars","/api/exchanges"}
         if path in personal or path.startswith("/api/admin/"):
             if not self.require_auth(authenticated) or not self.require_consent(uid): return
         if path=="/api/export" and not self.require_auth(authenticated): return
@@ -706,6 +720,11 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db:
                 rows=db.execute("""SELECT s.user_id,s.role,s.created_at,u.first_name,u.username
                     FROM staff_roles s JOIN users u ON u.id=s.user_id ORDER BY s.created_at DESC""").fetchall()
+            return self.send_json([dict(r) for r in rows])
+        if path=="/api/admin/partner-sources":
+            if not self.require_auth(authenticated): return
+            if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+            with connect() as db: rows=db.execute("SELECT id,platform,source_ref,title,status,created_at,updated_at FROM partner_sources ORDER BY id DESC").fetchall()
             return self.send_json([dict(r) for r in rows])
         if path=="/api/admin/reports":
             if not self.require_auth(authenticated): return
@@ -808,6 +827,20 @@ class Handler(SimpleHTTPRequestHandler):
                         ON CONFLICT(user_id) DO UPDATE SET role=excluded.role,created_by=excluded.created_by,created_at=excluded.created_at""",(target_id,role,uid,now))
                 record_audit(uid,"staff_granted",f"{target_id}:{role}")
                 return self.send_json({"ok":True,"user_id":target_id,"role":role},201)
+            if path=="/api/admin/partner-sources":
+                if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+                platform=str(data.get("platform") or "").strip().lower(); source_ref=clean_text(data.get("source_ref"),120); title=clean_text(data.get("title"),120)
+                if platform not in {"telegram","vk"}: return self.send_json({"error":"Выберите Telegram или VK"},400)
+                if platform=="telegram" and not re.fullmatch(r"-100\d{6,20}",source_ref): return self.send_json({"error":"Укажите ID Telegram-группы вида -100..."},400)
+                if platform=="vk" and not re.fullmatch(r"\d{1,20}",source_ref): return self.send_json({"error":"Укажите числовой ID сообщества VK"},400)
+                with connect() as db:
+                    params=(uid,platform,source_ref,title or ("Telegram-группа" if platform=="telegram" else "Сообщество VK"),"active",now,now)
+                    if DATABASE_URL: row=db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at RETURNING id",params).fetchone(); source_id=int(row["id"])
+                    else:
+                        db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at",params)
+                        row=db.execute("SELECT id FROM partner_sources WHERE platform=? AND source_ref=?",(platform,source_ref)).fetchone(); source_id=int(row[0])
+                record_audit(uid,"partner_source_saved",f"{platform}:{source_ref}")
+                return self.send_json({"ok":True,"id":source_id,"platform":platform,"status":"active"},201)
             if path=="/api/cars":
                 if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
                 name=clean_text(data.get("name"),80); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
@@ -939,6 +972,12 @@ class Handler(SimpleHTTPRequestHandler):
             record_audit(deleted_actor,"account_deleted")
             return self.send_json({"ok":True,"deleted":True})
         if not self.require_consent(uid): return
+        source=re.fullmatch(r"/api/admin/partner-sources/(\d+)",path)
+        if source:
+            if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+            with connect() as db: cur=db.execute("UPDATE partner_sources SET status='disabled',updated_at=? WHERE id=? AND status<>'disabled'",(NOW().isoformat(),int(source.group(1))))
+            if cur.rowcount: record_audit(uid,"partner_source_disabled",source.group(1))
+            return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
         exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
         if exchange:
             with connect() as db: cur=db.execute("DELETE FROM exchanges WHERE id=? AND from_user=? AND status='new'",(int(exchange.group(1)),uid))
