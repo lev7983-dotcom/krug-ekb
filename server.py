@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v118"
+APP_RELEASE="v119"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -165,9 +165,13 @@ def init_db():
         add_column(db,"users","privacy_consent_at","TEXT DEFAULT NULL")
         add_column(db,"users","rules_version","TEXT DEFAULT ''")
         add_column(db,"users","rules_accepted_at","TEXT DEFAULT NULL")
+        add_column(db,"partner_sources","secret_hash","TEXT DEFAULT ''")
+        add_column(db,"partner_sources","confirmation_code","TEXT DEFAULT ''")
+        add_column(db,"import_drafts","import_key","TEXT DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_import_drafts_user_created ON import_drafts(user_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_partner_sources_owner ON partner_sources(owner_id,status)")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_import_drafts_key ON import_drafts(import_key) WHERE import_key IS NOT NULL")
         count_row=db.execute("SELECT COUNT(*) AS count FROM cars").fetchone()
         if not (count_row["count"] if DATABASE_URL else count_row[0]):
             seed=[("Toyota RAV4",2890000,2021,"54 000 км","Продажа",0,"70% 50%"),("Kia K5",2470000,2020,"72 000 км","Обмен",0,"18% 50%"),("Lada Granta",690000,2019,"91 000 км","Срочно",1,"49% 50%"),("Hyundai Solaris",1450000,2018,"86 000 км","Срочно",1,"48% 50%"),("Ford Focus",290000,2007,"181 000 км","Обмен",0,"23% 50%"),("ВАЗ 2114",95000,2008,"210 000 км","Срочно",1,"48% 50%")]
@@ -403,14 +407,18 @@ def parse_imported_listing(text):
         except ValueError: pass
     return {"name":clean_text(title,80),"year":number(year_match),"price":number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
 
-def create_import_draft(user_id,source_type,text,source_url=""):
+def create_import_draft(user_id,source_type,text,source_url="",import_key=""):
     """Create a private, user-bound draft. Imported content is never auto-published."""
     parsed=parse_imported_listing(text); now=NOW().isoformat()
-    params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now)
+    safe_key=clean_text(import_key,240) or None
+    params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now,safe_key)
     with connect() as db:
+        if safe_key:
+            existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
+            if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
         if DATABASE_URL:
-            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?) RETURNING id",params).fetchone(); return int(row["id"])
-        return int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at) VALUES(?,?,?,?,?,?)",params).lastrowid)
+            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); return int(row["id"]),True
+        return int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid),True
 
 def telegram_import_listing(update):
     message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
@@ -420,7 +428,8 @@ def telegram_import_listing(update):
         try:
             with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
             if not source: return
-            owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); draft_id=create_import_draft(owner_id,"telegram_group",text)
+            owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}")
+            if not created: return
             telegram_call("sendMessage",{"chat_id":owner_id,"text":"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
         except Exception as exc: print(f"Partner Telegram import failed: {type(exc).__name__}")
         return
@@ -429,7 +438,7 @@ def telegram_import_listing(update):
     source_type="vk" if re.search(r"https?://(?:www\.)?vk\.com/",text,re.I) else "telegram"
     if not forwarded and source_type!="vk": return
     try:
-        draft_id=create_import_draft(user_id,source_type,text)
+        draft_id,_=create_import_draft(user_id,source_type,text)
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
@@ -464,6 +473,13 @@ def notify_exchange_user(chat_id,text,car_id=None):
         result=telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Открыть КРУГ","web_app":{"url":web_app_url(car_id)}}]]}})
         record_notification_delivery(bool(result.get("ok")),"telegram_rejected" if not result.get("ok") else "")
     except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Exchange notification failed: {type(exc).__name__}")
+
+def notify_import_user(chat_id,text,draft_id):
+    if not BOT_TOKEN or not str(chat_id).isdigit(): return
+    try:
+        result=telegram_call("sendMessage",{"chat_id":str(chat_id),"text":text,"reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
+        record_notification_delivery(bool(result.get("ok")),"telegram_rejected" if not result.get("ok") else "")
+    except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Import notification failed: {type(exc).__name__}")
 
 def notify_price_drop(car_id,name,old_price,new_price):
     if not BOT_TOKEN: return
@@ -547,6 +563,8 @@ class Handler(SimpleHTTPRequestHandler):
         raw=json.dumps(data,ensure_ascii=False).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
     def send_empty(self,status):
         self.send_response(status); self.send_header("Content-Length","0"); self.send_header("Cache-Control","no-store"); self.end_headers()
+    def send_text(self,value,status=200):
+        raw=str(value).encode("utf-8"); self.send_response(status); self.send_header("Content-Type","text/plain; charset=utf-8"); self.send_header("Content-Length",str(len(raw))); self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(raw)
     def end_headers(self):
         parsed_static=urlparse(self.path); static_path=parsed_static.path.lower(); static_query=parse_qs(parsed_static.query)
         versioned_asset=static_path.endswith((".js",".css")) and bool(re.fullmatch(r"\d{1,8}",str(static_query.get("v",[""])[0])))
@@ -781,8 +799,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         try:
             if not self.valid_request_target() or not self.require_rate("post_ip",600,60): return
-            path=urlparse(self.path).path; is_webhook=bool(BOT_TOKEN and path=="/api/telegram/webhook")
-            if not is_webhook and not self.require_origin(): return
+            path=urlparse(self.path).path; is_webhook=bool(BOT_TOKEN and path=="/api/telegram/webhook"); is_vk_callback=path=="/api/vk/callback"
+            if not is_webhook and not is_vk_callback and not self.require_origin(): return
             data=self.read_json(); now=NOW().isoformat()
             if is_webhook:
                 supplied=str(self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "")
@@ -791,6 +809,24 @@ class Handler(SimpleHTTPRequestHandler):
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
                 threading.Thread(target=telegram_import_listing,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
+            if is_vk_callback:
+                group_id=str(data.get("group_id") or ""); supplied=str(data.get("secret") or "")
+                with connect() as db: source=db.execute("SELECT owner_id,secret_hash,confirmation_code FROM partner_sources WHERE platform='vk' AND source_ref=? AND status='active'",(group_id,)).fetchone()
+                if not source or not supplied: return self.send_json({"error":"Not found"},404)
+                owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); secret_hash=str(source["secret_hash"] if DATABASE_URL else source[1]); confirmation=str(source["confirmation_code"] if DATABASE_URL else source[2])
+                if not secret_hash or not hmac.compare_digest(hashlib.sha256(supplied.encode("utf-8")).hexdigest(),secret_hash): return self.send_json({"error":"Not found"},404)
+                event_type=str(data.get("type") or "")
+                if event_type=="confirmation": return self.send_text(confirmation)
+                if event_type=="wall_post_new":
+                    obj=data.get("object") if isinstance(data.get("object"),dict) else {}; post=obj.get("post") if isinstance(obj.get("post"),dict) else obj
+                    text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
+                    if text:
+                        source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
+                        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}")
+                        if not created: return self.send_text("ok")
+                        threading.Thread(target=notify_import_user,args=(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id),daemon=True).start()
+                        record_audit(owner_id,"vk_import_draft",draft_id)
+                return self.send_text("ok")
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
             if not self.require_rate("post",120,60,uid): return
@@ -829,15 +865,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.send_json({"ok":True,"user_id":target_id,"role":role},201)
             if path=="/api/admin/partner-sources":
                 if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
-                platform=str(data.get("platform") or "").strip().lower(); source_ref=clean_text(data.get("source_ref"),120); title=clean_text(data.get("title"),120)
+                platform=str(data.get("platform") or "").strip().lower(); source_ref=clean_text(data.get("source_ref"),120); title=clean_text(data.get("title"),120); callback_secret=str(data.get("callback_secret") or ""); confirmation_code=clean_text(data.get("confirmation_code"),120)
                 if platform not in {"telegram","vk"}: return self.send_json({"error":"Выберите Telegram или VK"},400)
                 if platform=="telegram" and not re.fullmatch(r"-100\d{6,20}",source_ref): return self.send_json({"error":"Укажите ID Telegram-группы вида -100..."},400)
                 if platform=="vk" and not re.fullmatch(r"\d{1,20}",source_ref): return self.send_json({"error":"Укажите числовой ID сообщества VK"},400)
+                if platform=="vk" and (not 8<=len(callback_secret)<=100 or not 3<=len(confirmation_code)<=120): return self.send_json({"error":"Для VK укажите секрет и строку подтверждения Callback API"},400)
                 with connect() as db:
-                    params=(uid,platform,source_ref,title or ("Telegram-группа" if platform=="telegram" else "Сообщество VK"),"active",now,now)
-                    if DATABASE_URL: row=db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at RETURNING id",params).fetchone(); source_id=int(row["id"])
+                    params=(uid,platform,source_ref,title or ("Telegram-группа" if platform=="telegram" else "Сообщество VK"),"active",hashlib.sha256(callback_secret.encode("utf-8")).hexdigest() if callback_secret else "",confirmation_code if platform=="vk" else "",now,now)
+                    if DATABASE_URL: row=db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,secret_hash,confirmation_code,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',secret_hash=excluded.secret_hash,confirmation_code=excluded.confirmation_code,updated_at=excluded.updated_at RETURNING id",params).fetchone(); source_id=int(row["id"])
                     else:
-                        db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at",params)
+                        db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,secret_hash,confirmation_code,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',secret_hash=excluded.secret_hash,confirmation_code=excluded.confirmation_code,updated_at=excluded.updated_at",params)
                         row=db.execute("SELECT id FROM partner_sources WHERE platform=? AND source_ref=?",(platform,source_ref)).fetchone(); source_id=int(row[0])
                 record_audit(uid,"partner_source_saved",f"{platform}:{source_ref}")
                 return self.send_json({"ok":True,"id":source_id,"platform":platform,"status":"active"},201)
