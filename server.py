@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v127"
+APP_RELEASE="v128"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -790,6 +790,8 @@ class Handler(SimpleHTTPRequestHandler):
                     GROUP BY c.id,u.role,u.company ORDER BY viewed_at DESC LIMIT 20""",(uid,uid)).fetchall()
             return self.send_json([public_car_summary(r,r["faved"]) for r in rows])
         if path=="/api/imports":
+            if not self.require_auth(authenticated): return
+            if not self.require_consent(uid): return
             with connect() as db: rows=db.execute("SELECT id,source_type,source_url,parsed_json,created_at FROM import_drafts WHERE user_id=? AND status='draft' ORDER BY id DESC LIMIT 50",(uid,)).fetchall()
             result=[]
             for row in rows:
