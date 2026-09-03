@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v129"
+APP_RELEASE="v130"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -470,6 +470,7 @@ def telegram_import_listing(update):
             with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
             if not source: return
             if not looks_like_vehicle_listing(text): return
+            if not rate_allowed(("telegram_import",str(chat_id)),60,3600): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
             if import_draft_exists(import_key): return
             photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
@@ -905,7 +906,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if event_type=="wall_post_new":
                     obj=data.get("object") if isinstance(data.get("object"),dict) else {}; post=obj.get("post") if isinstance(obj.get("post"),dict) else obj
                     text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
-                    if text and looks_like_vehicle_listing(text):
+                    if text and looks_like_vehicle_listing(text) and rate_allowed(("vk_import",str(group_id)),60,3600):
                         source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
                         draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}")
                         if not created: return self.send_text("ok")
