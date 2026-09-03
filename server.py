@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v137"
+APP_RELEASE="v138"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -449,6 +449,23 @@ def telegram_photo_data(message):
     with urlopen(Request(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"),timeout=12) as response: raw=response.read(3_000_001)
     if len(raw)>3_000_000: raise ValueError("Фотография из Telegram слишком большая")
     return [validated_image("data:image/jpeg;base64,"+base64.b64encode(raw).decode("ascii"),2_000_000,1600)]
+
+def vk_photo_data(post):
+    """Download one photo URL supplied by a signed official VK callback event."""
+    attachments=post.get("attachments") if isinstance(post.get("attachments"),list) else []
+    candidates=[]
+    for attachment in attachments:
+        photo=(attachment or {}).get("photo") if isinstance(attachment,dict) else None
+        for size in (photo or {}).get("sizes",[]) if isinstance(photo,dict) else []:
+            url=str((size or {}).get("url") or ""); parsed=urlparse(url); host=(parsed.hostname or "").lower()
+            if parsed.scheme=="https" and any(host==suffix or host.endswith("."+suffix) for suffix in ("userapi.com","vkuserphoto.ru")):
+                candidates.append((int((size or {}).get("width") or 0)*int((size or {}).get("height") or 0),url))
+    if not candidates: return []
+    url=max(candidates,key=lambda item:item[0])[1]
+    with urlopen(Request(url,headers={"User-Agent":"KRUG/1.0"}),timeout=12) as response: raw=response.read(2_000_001)
+    if not raw or len(raw)>2_000_000: return []
+    mime="image/jpeg" if raw.startswith((b"\xff\xd8\xff",b"\xff\xd8")) else "image/png" if raw.startswith(b"\x89PNG\r\n\x1a\n") else "image/webp" if raw.startswith(b"RIFF") and raw[8:12]==b"WEBP" else ""
+    return [validated_image(f"data:{mime};base64,"+base64.b64encode(raw).decode("ascii"),2_000_000,1600)] if mime else []
 
 def import_draft_exists(import_key):
     if not import_key: return False
@@ -922,7 +939,9 @@ class Handler(SimpleHTTPRequestHandler):
                     text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
                     if text and looks_like_vehicle_listing(text) and rate_allowed(("vk_import",str(group_id)),60,3600):
                         source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
-                        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}")
+                        try: photos=vk_photo_data(post)
+                        except Exception: photos=[]
+                        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos)
                         if not created: return self.send_text("ok")
                         threading.Thread(target=notify_import_user,args=(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id),daemon=True).start()
                         record_audit(owner_id,"vk_import_draft",draft_id)
