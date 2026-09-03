@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v132"
+APP_RELEASE="v133"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -397,7 +397,7 @@ def parse_imported_listing(text):
     value=clean_text(text,5000); lines=[line.strip(" •\t-") for line in value.splitlines() if line.strip()]
     year_match=re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)",value)
     km_match=re.search(r"(?<!\d)(\d[\d\s.]{0,10})\s*(?:км|km)\b",value,re.I)
-    price_match=re.search(r"(?<!\d)(\d[\d\s.,]{0,14})\s*(?:(млн|тыс)\.?\s*(?:₽|руб(?:лей|ля|ль)?\.?|р\.)?|(?:₽|руб(?:лей|ля|ль)?\.?|р\.))",value,re.I)
+    price_match=re.search(r"(?<!\d)(\d[\d\s.,]{0,14})\s*(?:(млн|тыс|т)\.?\s*(?:₽|руб(?:лей|ля|ль)?\.?|р\.?)?|(?:₽|руб(?:лей|ля|ль)?\.?|р\.))",value,re.I)
     if not price_match: price_match=re.search(r"\bцена\s*[:\-]?\s*(\d[\d\s.,]{2,14})\s*(млн|тыс)?",value,re.I)
     phone_match=re.search(r"(?:\+7|8)[\s()\-]*\d{3}[\s()\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}",value)
     source_match=re.search(r"https?://(?:www\.)?(?:vk\.com|t\.me)/[^\s]+",value,re.I)
@@ -408,7 +408,7 @@ def parse_imported_listing(text):
         try: amount=float(raw)
         except ValueError: return 0
         if suffix=="млн": amount*=1_000_000
-        elif suffix=="тыс": amount*=1_000
+        elif suffix in {"тыс","т"}: amount*=1_000
         return int(amount)
     brand_words=r"toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген|audi|ауди|skoda|шкода|chevrolet|шевроле|mazda|мазда|mitsubishi|мицубиси|subaru|субару|lexus|лексус|honda|хонда|geely|джили|chery|чери|haval|хавал|exeed|эксид|omoda|омода|moskvich|москвич|уаз|gaz|газ"
     title=next((line for line in lines if re.search(rf"\b(?:{brand_words})\b",line,re.I)),next((line for line in lines if not line.lower().startswith(("http://","https://"))),""))
