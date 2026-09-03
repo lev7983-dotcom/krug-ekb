@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v130"
+APP_RELEASE="v131"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -475,7 +475,7 @@ def telegram_import_listing(update):
             if import_draft_exists(import_key): return
             photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
             if not created: return
-            telegram_call("sendMessage",{"chat_id":owner_id,"text":"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
+            notify_import_user(owner_id,"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.",draft_id)
         except Exception as exc: print(f"Partner Telegram import failed: {type(exc).__name__}")
         return
     if str(chat_id)!=str(user_id): return
@@ -490,7 +490,7 @@ def telegram_import_listing(update):
         photos=telegram_photo_data(message); draft_id,created=create_import_draft(user_id,source_type,text,import_key=import_key,images=photos)
         if not created: return
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
-        telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
+        notify_import_user(str(chat_id),f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.",draft_id)
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
 
 def telegram_connect_source(update):
