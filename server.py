@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v138"
+APP_RELEASE="v139"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -576,6 +576,20 @@ def notify_import_user(chat_id,text,draft_id):
         record_notification_delivery(bool(result.get("ok")),"telegram_rejected" if not result.get("ok") else "")
     except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Import notification failed: {type(exc).__name__}")
 
+def vk_import_listing(group_id,owner_id,post):
+    """Process a verified VK event outside the time-critical callback response."""
+    try:
+        text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
+        if not text or not looks_like_vehicle_listing(text) or not rate_allowed(("vk_import",str(group_id)),60,3600): return
+        source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
+        try: photos=vk_photo_data(post)
+        except Exception: photos=[]
+        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos)
+        if not created: return
+        notify_import_user(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id)
+        record_audit(owner_id,"vk_import_draft",draft_id)
+    except Exception as exc: print(f"Partner VK import failed: {type(exc).__name__}")
+
 def notify_price_drop(car_id,name,old_price,new_price):
     if not BOT_TOKEN: return
     try:
@@ -936,15 +950,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if event_type=="confirmation": return self.send_text(confirmation)
                 if event_type=="wall_post_new":
                     obj=data.get("object") if isinstance(data.get("object"),dict) else {}; post=obj.get("post") if isinstance(obj.get("post"),dict) else obj
-                    text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
-                    if text and looks_like_vehicle_listing(text) and rate_allowed(("vk_import",str(group_id)),60,3600):
-                        source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
-                        try: photos=vk_photo_data(post)
-                        except Exception: photos=[]
-                        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos)
-                        if not created: return self.send_text("ok")
-                        threading.Thread(target=notify_import_user,args=(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id),daemon=True).start()
-                        record_audit(owner_id,"vk_import_draft",draft_id)
+                    threading.Thread(target=vk_import_listing,args=(group_id,owner_id,post),daemon=True).start()
                 return self.send_text("ok")
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
