@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v122"
+APP_RELEASE="v123"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -168,6 +168,7 @@ def init_db():
         add_column(db,"partner_sources","secret_hash","TEXT DEFAULT ''")
         add_column(db,"partner_sources","confirmation_code","TEXT DEFAULT ''")
         add_column(db,"import_drafts","import_key","TEXT DEFAULT NULL")
+        add_column(db,"import_drafts","published_car_id","INTEGER DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_import_drafts_user_created ON import_drafts(user_id,created_at)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_partner_sources_owner ON partner_sources(owner_id,status)")
@@ -937,9 +938,24 @@ class Handler(SimpleHTTPRequestHandler):
                 if len(name)<2 or price<1000 or not 1950<=year<=NOW().year+1 or km<0: return self.send_json({"error":"Проверьте марку, цену, год и пробег"},400)
                 publish_key=str(data.get("publish_key") or "").strip()
                 if publish_key and not re.fullmatch(r"[A-Za-z0-9_-]{16,80}",publish_key): return self.send_json({"error":"Некорректный идентификатор публикации"},400)
+                try: import_id=int(data.get("import_id") or 0)
+                except (TypeError,ValueError): return self.send_json({"error":"Некорректный черновик"},400)
+                if import_id<0: return self.send_json({"error":"Некорректный черновик"},400)
+                if import_id:
+                    with connect() as db: imported_draft=db.execute("SELECT status,published_car_id FROM import_drafts WHERE id=? AND user_id=?",(import_id,uid)).fetchone()
+                    if not imported_draft: return self.send_json({"error":"Черновик не найден"},404)
                 if publish_key:
-                    with connect() as db: existing=db.execute("SELECT id FROM cars WHERE owner_id=? AND publish_key=?",(uid,publish_key)).fetchone()
+                    with connect() as db:
+                        existing=db.execute("SELECT id FROM cars WHERE owner_id=? AND publish_key=?",(uid,publish_key)).fetchone()
+                        if existing and import_id:
+                            existing_id=existing["id"] if DATABASE_URL else existing[0]
+                            draft_status=imported_draft["status"] if DATABASE_URL else imported_draft[0]; draft_car=imported_draft["published_car_id"] if DATABASE_URL else imported_draft[1]
+                            if draft_status=='draft': db.execute("UPDATE import_drafts SET status='published',published_car_id=? WHERE id=? AND user_id=?",(existing_id,import_id,uid))
+                            elif draft_status!='published' or int(draft_car or 0)!=int(existing_id): return self.send_json({"error":"Черновик уже использован"},409)
                     if existing: return self.send_json({"ok":True,"id":existing["id"] if DATABASE_URL else existing[0],"duplicate":True},200)
+                if import_id:
+                    draft_status=imported_draft["status"] if DATABASE_URL else imported_draft[0]
+                    if draft_status!='draft': return self.send_json({"error":"Черновик уже опубликован"},409)
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
                 phone=normalize_phone(data.get("phone")); phone_public=int(bool(phone) and data.get("phone_public") is True)
@@ -958,6 +974,7 @@ class Handler(SimpleHTTPRequestHandler):
                 with connect() as db:
                     cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key or None)); cid=cur.lastrowid
                     db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name),cid))
+                    if import_id: db.execute("UPDATE import_drafts SET status='published',published_car_id=? WHERE id=? AND user_id=? AND status='draft'",(cid,import_id,uid))
                 record_audit(uid,"listing_created",cid)
                 if urgent: threading.Thread(target=notify_urgent,args=(cid,name[:80],price),daemon=True).start()
                 threading.Thread(target=notify_saved_searches,args=(uid,{"id":cid,"name":name[:80],"price":price,"transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel}),daemon=True).start()

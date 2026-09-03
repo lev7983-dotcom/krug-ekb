@@ -772,13 +772,13 @@ publish=async function(){
   try{data=krugListingData()}catch(error){toast(error.message);return}
   if(location.protocol==='file:')return toast('Публикация работает внутри Telegram');
   if(navigator.onLine===false){krugPublishStatus.textContent='Нет подключения к интернету. Данные формы сохранены — попробуйте снова после подключения.';return toast('Нет подключения к интернету')}
-  if(!krugEditingId)data.publish_key=krugPublishIdentity(data);
+  if(!krugEditingId){data.publish_key=krugPublishIdentity(data);if(krugActiveImportId)data.import_id=krugActiveImportId}
   let editing=krugEditingId,defaultLabel=editing?'Сохранить изменения':'Опубликовать бесплатно',controller=new AbortController(),seconds=0,timer=setTimeout(()=>controller.abort(),35000),ticker=setInterval(()=>{seconds+=1;krugPublishStatus.textContent=seconds<8?'Защищённо передаём данные…':seconds<20?'Загружаем фотографии — это может занять немного времени…':'Соединение медленное, продолжаем попытку…'},1000);
   button.classList.add('busy');button.textContent=editing?'Сохраняем…':'Публикуем…';
   krugPublishStatus.className='publish-status working';krugPublishStatus.textContent=editing?'Сохраняем изменения…':'Проверяем и публикуем объявление…';
   try{
     await krugJson(editing?`/api/cars/${editing}`:'/api/cars',{method:editing?'PUT':'POST',body:JSON.stringify(data),signal:controller.signal});
-    if(!editing)localStorage.removeItem(KRUG_PENDING_PUBLISH);krugPublishStatus.className='publish-status success';krugPublishStatus.textContent=editing?'✓ Изменения сохранены':'✓ Объявление опубликовано';toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
+    if(!editing){localStorage.removeItem(KRUG_PENDING_PUBLISH);krugActiveImportId=0;krugImportLoaded=0;const cleanUrl=new URL(location.href);cleanUrl.searchParams.delete('import');history.replaceState(null,'',cleanUrl)}krugPublishStatus.className='publish-status success';krugPublishStatus.textContent=editing?'✓ Изменения сохранены':'✓ Объявление опубликовано';toast(editing?'Изменения сохранены':'Объявление опубликовано');krugResetListingForm();go('catalog');
     setTimeout(()=>{editing?showMyCars():krugLoadCars()},50);
   }catch(error){let message=error?.name==='AbortError'?'Сервер долго не отвечает. Форма сохранена — проверьте «Мои объявления» и попробуйте снова.':error.message;krugPublishStatus.className='publish-status error';krugPublishStatus.textContent=message;toast(message)}
   finally{clearTimeout(timer);clearInterval(ticker);button.classList.remove('busy');button.textContent=defaultLabel}
@@ -1055,13 +1055,13 @@ editCar=async function(id){
 
 /* KRUG source block 64 */
 // A forwarded Telegram post or a voluntarily submitted VK link becomes a private draft.
-let krugImportLoaded=0;
+let krugImportLoaded=0,krugActiveImportId=0;
 async function loadKrugImportedDraft(){
   const importId=Number(new URLSearchParams(location.search).get('import'))||0;
   if(!importId||krugImportLoaded===importId||!krugPrivacyReady||!krugInitData)return;
   krugImportLoaded=importId;
   try{
-    const d=await krugJson(`/api/imports/${importId}`);
+    const d=await krugJson(`/api/imports/${importId}`);krugActiveImportId=importId;
     krugEditingId=0;carName.value=d.name||'';carYear.value=Number(d.year)||'';carPrice.value=Number(d.price)||'';carKm.value=Number(d.km)||'';carPhone.value=d.phone||'';
     krugImagesData=(d.images||[]).map(safeImageSrc);krugImageData=krugImagesData[0]||'';krugThumbnailData=krugImageData?await krugThumbnailFromData(krugImageData):'';krugRenderPhotoPreviews();
     carDescription.value=[d.description||'',d.source_url?`Источник: ${d.source_url}`:''].filter(Boolean).join('\n\n').slice(0,2000);
@@ -1092,6 +1092,6 @@ const krugLoadProfileBeforeSources=krugLoadProfile;krugLoadProfile=async functio
 const krugImportsButton=document.createElement('button');krugImportsButton.className='menu-item admin-menu';krugImportsButton.innerHTML='Черновики из групп <span>0</span>';document.querySelector('#profile .menu-list').append(krugImportsButton);
 async function showImportDrafts(){try{const drafts=await krugJson('/api/imports');go('catalog');document.querySelector('#catalog .page-head h1').textContent='Черновики';document.getElementById('catalogCards').innerHTML=drafts.map(d=>`<div class="panel"><div class="eyebrow"><span class="dot"></span>${d.source_type.includes('vk')?'VK':'Telegram'}${d.has_photo?' · с фото':''}</div><h3>${safeText(d.name||'Черновик объявления')}</h3><div class="meta">${Number(d.year)||'Год не определён'} · ${Number(d.price)?rub(Number(d.price)):'Цена не определена'}</div><div class="manage-actions"><button class="btn lime" onclick="openImportDraft(${Number(d.id)})">Проверить</button><button class="btn back" onclick="removeImportDraft(${Number(d.id)})">Удалить</button></div></div>`).join('')||'<div class="panel empty-state"><h3>Черновиков пока нет</h3><p class="meta">Перешлите объявление боту или подключите партнёрскую группу.</p></div>'}catch(error){toast(error.message)}}
 async function openImportDraft(id){const url=new URL(location.href);url.searchParams.set('import',String(Number(id)));history.replaceState(null,'',url);krugImportLoaded=0;await loadKrugImportedDraft()}
-function removeImportDraft(id){askKrugConfirm({title:'Удалить черновик?',text:'Восстановить его после удаления не получится.',action:'Удалить',danger:true,onConfirm:async()=>{await krugJson(`/api/imports/${Number(id)}`,{method:'DELETE'});toast('Черновик удалён');await showImportDrafts()}})}
+function removeImportDraft(id){askKrugConfirm({title:'Удалить черновик?',text:'Восстановить его после удаления не получится.',action:'Удалить',danger:true,onConfirm:async()=>{await krugJson(`/api/imports/${Number(id)}`,{method:'DELETE'});if(krugActiveImportId===Number(id)){krugActiveImportId=0;krugImportLoaded=0}toast('Черновик удалён');await showImportDrafts()}})}
 krugImportsButton.onclick=showImportDrafts;
 const krugLoadProfileBeforeImports=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeImports();try{const d=await krugJson('/api/me'),count=Number(d.imports)||0;krugImportsButton.classList.toggle('show',count>0);krugImportsButton.innerHTML=`Черновики из групп <span>${count}</span>`}catch(_){krugImportsButton.classList.remove('show')}};
