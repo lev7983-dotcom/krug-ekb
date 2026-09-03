@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v134"
+APP_RELEASE="v135"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -420,7 +420,7 @@ def parse_imported_listing(text):
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
-    has_price=bool(re.search(r"\d[\d\s.]{2,14}\s*(?:₽|руб|р\.|тыс|млн)|\bцена\b",value))
+    has_price=bool(re.search(r"\d[\d\s.,]{2,14}\s*(?:₽|руб|р\.|т\.?\s*р\.?|тыс|млн)|\bцена\b",value))
     has_year=bool(re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)",value))
     has_km=bool(re.search(r"\d[\d\s.]{0,10}\s*(?:км|km)\b|\bпробег\b",value))
     has_vehicle=bool(re.search(r"\b(?:авто|автомобиль|машина|продам|обмен|toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген|audi|ауди|skoda|шкода|chevrolet|шевроле|mazda|мазда|mitsubishi|мицубиси|subaru|субару|lexus|лексус|honda|хонда|geely|джили|chery|чери|haval|хавал|exeed|эксид|omoda|омода|moskvich|москвич|уаз|gaz|газ)\b",value))
