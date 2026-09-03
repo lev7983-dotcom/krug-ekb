@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v125"
+APP_RELEASE="v126"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -478,7 +478,12 @@ def telegram_import_listing(update):
     source_type="vk" if re.search(r"https?://(?:www\.)?vk\.com/",text,re.I) else "telegram"
     if not forwarded and source_type!="vk": return
     try:
-        photos=telegram_photo_data(message); draft_id,_=create_import_draft(user_id,source_type,text,images=photos)
+        normalized=re.sub(r"\s+"," ",text.strip().lower()).encode("utf-8"); content_hash=hashlib.sha256(normalized).hexdigest()[:32]
+        import_key=f"private:{user_id}:{source_type}:{content_hash}"
+        if import_draft_exists(import_key):
+            telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Этот пост уже сохранён в ваших черновиках."}); return
+        photos=telegram_photo_data(message); draft_id,created=create_import_draft(user_id,source_type,text,import_key=import_key,images=photos)
+        if not created: return
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
