@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v119"
+APP_RELEASE="v120"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -407,9 +407,24 @@ def parse_imported_listing(text):
         except ValueError: pass
     return {"name":clean_text(title,80),"year":number(year_match),"price":number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
 
-def create_import_draft(user_id,source_type,text,source_url="",import_key=""):
+def telegram_photo_data(message):
+    photos=message.get("photo") if isinstance(message.get("photo"),list) else []
+    if not photos or not BOT_TOKEN: return []
+    file_id=str((photos[-1] or {}).get("file_id") or "")
+    if not file_id: return []
+    info=telegram_call("getFile",{"file_id":file_id}).get("result") or {}; file_path=str(info.get("file_path") or "")
+    if not re.fullmatch(r"[A-Za-z0-9_./-]{1,300}",file_path): return []
+    with urlopen(Request(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"),timeout=12) as response: raw=response.read(3_000_001)
+    if len(raw)>3_000_000: raise ValueError("Фотография из Telegram слишком большая")
+    return [validated_image("data:image/jpeg;base64,"+base64.b64encode(raw).decode("ascii"),2_000_000,1600)]
+
+def import_draft_exists(import_key):
+    if not import_key: return False
+    with connect() as db: return bool(db.execute("SELECT 1 FROM import_drafts WHERE import_key=?",(import_key,)).fetchone())
+
+def create_import_draft(user_id,source_type,text,source_url="",import_key="",images=None):
     """Create a private, user-bound draft. Imported content is never auto-published."""
-    parsed=parse_imported_listing(text); now=NOW().isoformat()
+    parsed=parse_imported_listing(text); now=NOW().isoformat(); parsed["images"]=list(images or [])[:1]
     safe_key=clean_text(import_key,240) or None
     params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now,safe_key)
     with connect() as db:
@@ -428,7 +443,9 @@ def telegram_import_listing(update):
         try:
             with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
             if not source: return
-            owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}")
+            owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
+            if import_draft_exists(import_key): return
+            photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
             if not created: return
             telegram_call("sendMessage",{"chat_id":owner_id,"text":"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
         except Exception as exc: print(f"Partner Telegram import failed: {type(exc).__name__}")
@@ -438,10 +455,28 @@ def telegram_import_listing(update):
     source_type="vk" if re.search(r"https?://(?:www\.)?vk\.com/",text,re.I) else "telegram"
     if not forwarded and source_type!="vk": return
     try:
-        draft_id,_=create_import_draft(user_id,source_type,text)
+        photos=telegram_photo_data(message); draft_id,_=create_import_draft(user_id,source_type,text,images=photos)
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         telegram_call("sendMessage",{"chat_id":str(chat_id),"text":f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.","reply_markup":{"inline_keyboard":[[{"text":"Проверить черновик","web_app":{"url":web_app_url(import_id=draft_id)}}]]}})
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
+
+def telegram_connect_source(update):
+    message=update.get("message") or {}; text=str(message.get("text") or "").split("@",1)[0].strip()
+    chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
+    if text!="/krug_source" or chat.get("type") not in {"group","supergroup"} or not chat_id or not user_id: return
+    try:
+        membership=telegram_call("getChatMember",{"chat_id":str(chat_id),"user_id":str(user_id)}).get("result") or {}
+        if membership.get("status") not in {"creator","administrator"}:
+            telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Подключить источник может только администратор этой группы."}); return
+        if not has_current_consent(str(user_id)):
+            telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Сначала откройте КРУГ в личном чате и примите правила, затем повторите /krug_source."}); return
+        now=NOW().isoformat(); title=clean_text(chat.get("title") or "Telegram-группа",120)
+        with connect() as db:
+            params=(str(user_id),"telegram",str(chat_id),title,"active",now,now)
+            db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at",params)
+        record_audit(str(user_id),"telegram_source_connected",str(chat_id))
+        telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"✅ Группа подключена к КРУГ. Новые автомобильные публикации будут приходить администратору как черновики и не появятся в каталоге без ручной проверки."})
+    except Exception as exc: print(f"Telegram source connect failed: {type(exc).__name__}")
 
 def record_notification_delivery(ok,error=""):
     key="notifications_sent" if ok else "notifications_failed"
@@ -807,6 +842,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if not supplied or not hmac.compare_digest(supplied,WEBHOOK_SECRET): return self.send_json({"error":"Not found"},404)
                 TELEGRAM_STATUS["updates_received"]=int(TELEGRAM_STATUS.get("updates_received") or 0)+1; TELEGRAM_STATUS["last_update_at"]=NOW().isoformat()
                 threading.Thread(target=telegram_welcome,args=(data,),daemon=True).start()
+                threading.Thread(target=telegram_connect_source,args=(data,),daemon=True).start()
                 threading.Thread(target=telegram_import_listing,args=(data,),daemon=True).start()
                 return self.send_json({"ok":True})
             if is_vk_callback:
