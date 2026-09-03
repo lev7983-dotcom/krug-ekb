@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v126"
+APP_RELEASE="v127"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -454,8 +454,12 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
             existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
             if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
         if DATABASE_URL:
-            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); return int(row["id"]),True
-        return int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid),True
+            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
+            db.execute("DELETE FROM import_drafts WHERE id IN (SELECT id FROM import_drafts WHERE user_id=? AND status='draft' ORDER BY id DESC OFFSET 100)",(str(user_id),))
+            return draft_id,True
+        draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid)
+        db.execute("DELETE FROM import_drafts WHERE id IN (SELECT id FROM import_drafts WHERE user_id=? AND status='draft' ORDER BY id DESC LIMIT -1 OFFSET 100)",(str(user_id),))
+        return draft_id,True
 
 def telegram_import_listing(update):
     message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
