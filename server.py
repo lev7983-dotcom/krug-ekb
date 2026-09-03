@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v124"
+APP_RELEASE="v125"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -424,6 +424,11 @@ def looks_like_vehicle_listing(text):
     has_vehicle=bool(re.search(r"\b(?:авто|автомобиль|машина|продам|обмен|toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген|audi|ауди|skoda|шкода|chevrolet|шевроле|mazda|мазда|mitsubishi|мицубиси|subaru|субару|lexus|лексус|honda|хонда|geely|джили|chery|чери|haval|хавал|exeed|эксид|omoda|омода|moskvich|москвич|уаз|gaz|газ)\b",value))
     return has_price and (has_year or has_km or has_vehicle)
 
+def import_quality(parsed):
+    checks=(("name",bool(str(parsed.get("name") or "").strip())),("year",int(parsed.get("year") or 0)>=1950),("price",int(parsed.get("price") or 0)>=1000),("km",bool(re.search(r"\b(?:км|km|пробег)\b",str(parsed.get("description") or ""),re.I))),("photo",bool(parsed.get("images"))))
+    missing=[name for name,ready in checks if not ready]
+    return {"quality":int(round(100*(len(checks)-len(missing))/len(checks))),"missing":missing}
+
 def telegram_photo_data(message):
     photos=message.get("photo") if isinstance(message.get("photo"),list) else []
     if not photos or not BOT_TOKEN: return []
@@ -781,7 +786,8 @@ class Handler(SimpleHTTPRequestHandler):
             for row in rows:
                 try: parsed=json.loads(row["parsed_json"] if DATABASE_URL else row[3])
                 except (TypeError,json.JSONDecodeError): parsed={}
-                result.append({"id":int(row["id"] if DATABASE_URL else row[0]),"source_type":row["source_type"] if DATABASE_URL else row[1],"source_url":row["source_url"] if DATABASE_URL else row[2],"name":clean_text(parsed.get("name") or "Черновик объявления",80),"year":int(parsed.get("year") or 0),"price":int(parsed.get("price") or 0),"has_photo":bool(parsed.get("images")),"created_at":row["created_at"] if DATABASE_URL else row[4]})
+                quality=import_quality(parsed)
+                result.append({"id":int(row["id"] if DATABASE_URL else row[0]),"source_type":row["source_type"] if DATABASE_URL else row[1],"source_url":row["source_url"] if DATABASE_URL else row[2],"name":clean_text(parsed.get("name") or "Черновик объявления",80),"year":int(parsed.get("year") or 0),"price":int(parsed.get("price") or 0),"has_photo":bool(parsed.get("images")),"quality":quality["quality"],"missing":quality["missing"],"created_at":row["created_at"] if DATABASE_URL else row[4]})
             return self.send_json(result)
         if path=="/api/me":
             if not self.require_auth(authenticated): return
@@ -840,7 +846,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_consent(uid): return
             with connect() as db: row=db.execute("SELECT id,source_type,source_url,parsed_json,created_at FROM import_drafts WHERE id=? AND user_id=? AND status='draft'",(int(imported.group(1)),uid)).fetchone()
             if not row: return self.send_json({"error":"Черновик не найден или уже истёк"},404)
-            payload=dict(row); parsed=json.loads(payload.pop("parsed_json") or "{}"); payload.update(parsed)
+            payload=dict(row); parsed=json.loads(payload.pop("parsed_json") or "{}"); payload.update(parsed); payload.update(import_quality(parsed))
             return self.send_json(payload)
         if path=="/api/export":
             if not self.require_auth(authenticated): return
