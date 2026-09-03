@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v120"
+APP_RELEASE="v122"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -407,6 +407,14 @@ def parse_imported_listing(text):
         except ValueError: pass
     return {"name":clean_text(title,80),"year":number(year_match),"price":number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
 
+def looks_like_vehicle_listing(text):
+    value=str(text or "").lower()
+    has_price=bool(re.search(r"\d[\d\s.]{2,14}\s*(?:₽|руб|р\.|тыс|млн)|\bцена\b",value))
+    has_year=bool(re.search(r"(?<!\d)(?:19|20)\d{2}(?!\d)",value))
+    has_km=bool(re.search(r"\d[\d\s.]{0,10}\s*(?:км|km)\b|\bпробег\b",value))
+    has_vehicle=bool(re.search(r"\b(?:авто|автомобиль|машина|продам|обмен|toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген)\b",value))
+    return has_price and (has_year or has_km or has_vehicle)
+
 def telegram_photo_data(message):
     photos=message.get("photo") if isinstance(message.get("photo"),list) else []
     if not photos or not BOT_TOKEN: return []
@@ -443,6 +451,7 @@ def telegram_import_listing(update):
         try:
             with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
             if not source: return
+            if not looks_like_vehicle_listing(text): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
             if import_draft_exists(import_key): return
             photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
@@ -723,7 +732,7 @@ class Handler(SimpleHTTPRequestHandler):
                 ur=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active' AND urgent=1 AND (urgent_until IS NULL OR urgent_until>?)"+production_scope,(NOW().isoformat(),)).fetchone()
                 ar=db.execute("SELECT COUNT(*) AS count FROM cars WHERE status='active'"+production_scope).fetchone()
             return self.send_json({"urgent":ur["count"] if DATABASE_URL else ur[0],"active":ar["count"] if DATABASE_URL else ar[0]})
-        personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/admin/staff","/api/admin/reports","/api/admin/partner-sources","/api/my-cars","/api/exchanges"}
+        personal={"/api/subscriptions","/api/favourites","/api/recent","/api/me","/api/imports","/api/admin/staff","/api/admin/reports","/api/admin/partner-sources","/api/my-cars","/api/exchanges"}
         if path in personal or path.startswith("/api/admin/"):
             if not self.require_auth(authenticated) or not self.require_consent(uid): return
         if path=="/api/export" and not self.require_auth(authenticated): return
@@ -757,16 +766,24 @@ class Handler(SimpleHTTPRequestHandler):
                     WHERE v.viewer_id=? AND c.status='active'
                     GROUP BY c.id,u.role,u.company ORDER BY viewed_at DESC LIMIT 20""",(uid,uid)).fetchall()
             return self.send_json([public_car_summary(r,r["faved"]) for r in rows])
+        if path=="/api/imports":
+            with connect() as db: rows=db.execute("SELECT id,source_type,source_url,parsed_json,created_at FROM import_drafts WHERE user_id=? AND status='draft' ORDER BY id DESC LIMIT 50",(uid,)).fetchall()
+            result=[]
+            for row in rows:
+                try: parsed=json.loads(row["parsed_json"] if DATABASE_URL else row[3])
+                except (TypeError,json.JSONDecodeError): parsed={}
+                result.append({"id":int(row["id"] if DATABASE_URL else row[0]),"source_type":row["source_type"] if DATABASE_URL else row[1],"source_url":row["source_url"] if DATABASE_URL else row[2],"name":clean_text(parsed.get("name") or "Черновик объявления",80),"year":int(parsed.get("year") or 0),"price":int(parsed.get("price") or 0),"has_photo":bool(parsed.get("images")),"created_at":row["created_at"] if DATABASE_URL else row[4]})
+            return self.send_json(result)
         if path=="/api/me":
             if not self.require_auth(authenticated): return
             with connect() as db:
-                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); vr=db.execute("SELECT COUNT(*) AS count FROM car_views v JOIN cars c ON c.id=v.car_id WHERE c.owner_id=? AND c.status<>'deleted'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]; views=vr["count"] if DATABASE_URL else vr[0]
+                u=db.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone(); lr=db.execute("SELECT COUNT(*) AS count FROM cars WHERE owner_id=? AND status='active'",(uid,)).fetchone(); fr=db.execute("SELECT COUNT(*) AS count FROM favourites f JOIN cars c ON c.id=f.car_id WHERE f.user_id=? AND c.status='active'",(uid,)).fetchone(); er=db.execute("SELECT COUNT(*) AS count FROM exchanges e JOIN cars c ON c.id=e.target_car_id WHERE c.owner_id=? AND e.status='new'",(uid,)).fetchone(); sr=db.execute("SELECT COUNT(*) AS count FROM subscriptions WHERE telegram_user=?",(uid,)).fetchone(); vr=db.execute("SELECT COUNT(*) AS count FROM car_views v JOIN cars c ON c.id=v.car_id WHERE c.owner_id=? AND c.status<>'deleted'",(uid,)).fetchone(); ir=db.execute("SELECT COUNT(*) AS count FROM import_drafts WHERE user_id=? AND status='draft'",(uid,)).fetchone(); listings=lr["count"] if DATABASE_URL else lr[0]; favs=fr["count"] if DATABASE_URL else fr[0]; offers=er["count"] if DATABASE_URL else er[0]; subscriptions=sr["count"] if DATABASE_URL else sr[0]; views=vr["count"] if DATABASE_URL else vr[0]; imports=ir["count"] if DATABASE_URL else ir[0]
             role=staff_role(uid); moderation_pending=0
             if role in {"owner","admin","moderator"}:
                 with connect() as db:
                     pending_row=db.execute("SELECT COUNT(*) AS count FROM reports WHERE status='new'").fetchone()
                     moderation_pending=pending_row["count"] if DATABASE_URL else pending_row[0]
-            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"views":views,"admin":role in {"owner","admin"},"staff_role":role,"moderation_pending":moderation_pending})
+            return self.send_json({"user":dict(u) if u else None,"listings":listings,"favourites":favs,"offers":offers,"subscriptions":subscriptions,"views":views,"imports":imports,"admin":role in {"owner","admin"},"staff_role":role,"moderation_pending":moderation_pending})
         if path=="/api/admin/staff":
             if not self.require_auth(authenticated): return
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
@@ -856,7 +873,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if event_type=="wall_post_new":
                     obj=data.get("object") if isinstance(data.get("object"),dict) else {}; post=obj.get("post") if isinstance(obj.get("post"),dict) else obj
                     text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
-                    if text:
+                    if text and looks_like_vehicle_listing(text):
                         source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
                         draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}")
                         if not created: return self.send_text("ok")
@@ -1045,6 +1062,10 @@ class Handler(SimpleHTTPRequestHandler):
             record_audit(deleted_actor,"account_deleted")
             return self.send_json({"ok":True,"deleted":True})
         if not self.require_consent(uid): return
+        imported=re.fullmatch(r"/api/imports/(\d+)",path)
+        if imported:
+            with connect() as db: cur=db.execute("DELETE FROM import_drafts WHERE id=? AND user_id=? AND status='draft'",(int(imported.group(1)),uid))
+            return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
         source=re.fullmatch(r"/api/admin/partner-sources/(\d+)",path)
         if source:
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
