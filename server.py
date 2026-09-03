@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v136"
+APP_RELEASE="v137"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -978,6 +978,13 @@ class Handler(SimpleHTTPRequestHandler):
                         row=db.execute("SELECT id FROM partner_sources WHERE platform=? AND source_ref=?",(platform,source_ref)).fetchone(); source_id=int(row[0])
                 record_audit(uid,"partner_source_saved",f"{platform}:{source_ref}")
                 return self.send_json({"ok":True,"id":source_id,"platform":platform,"status":"active"},201)
+            source_enable=re.fullmatch(r"/api/admin/partner-sources/(\d+)/enable",path)
+            if source_enable:
+                if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+                with connect() as db: cur=db.execute("UPDATE partner_sources SET status='active',updated_at=? WHERE id=? AND status='disabled'",(now,int(source_enable.group(1))))
+                if not cur.rowcount: return self.send_json({"error":"Источник не найден или уже включён"},404)
+                record_audit(uid,"partner_source_enabled",source_enable.group(1))
+                return self.send_json({"ok":True,"status":"active"})
             if path=="/api/cars":
                 if not rate_allowed((uid,"create"),10,3600): return self.send_json({"error":"Слишком много объявлений. Попробуйте позже"},429)
                 name=clean_text(data.get("name"),80); price=int(data.get("price") or 0); year=int(data.get("year") or 0); km=int(str(data.get("km","0")).replace(" км","").replace(" ","") or 0)
