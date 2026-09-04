@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v140"
+APP_RELEASE="v141"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -866,7 +866,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
             result=[]
             with connect() as db:
-                rows=db.execute("SELECT id,platform,source_ref,title,status,created_at,updated_at FROM partner_sources ORDER BY id DESC").fetchall()
+                rows=db.execute("""SELECT id,platform,source_ref,title,status,created_at,updated_at,
+                    CASE WHEN platform='telegram' OR (COALESCE(secret_hash,'')<>'' AND COALESCE(confirmation_code,'')<>'') THEN 1 ELSE 0 END AS configured
+                    FROM partner_sources ORDER BY id DESC""").fetchall()
                 for row in rows:
                     item=dict(row); prefix=("telegram:" if item["platform"]=="telegram" else "vk:")+str(item["source_ref"])+":"
                     stats=db.execute("SELECT COUNT(*) AS count,MAX(created_at) AS last_import_at FROM import_drafts WHERE import_key LIKE ?",(prefix+"%",)).fetchone()
