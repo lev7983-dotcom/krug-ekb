@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v141"
+APP_RELEASE="v142"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -167,6 +167,8 @@ def init_db():
         add_column(db,"users","rules_accepted_at","TEXT DEFAULT NULL")
         add_column(db,"partner_sources","secret_hash","TEXT DEFAULT ''")
         add_column(db,"partner_sources","confirmation_code","TEXT DEFAULT ''")
+        add_column(db,"partner_sources","last_event_at","TEXT DEFAULT NULL")
+        add_column(db,"partner_sources","last_error","TEXT DEFAULT ''")
         add_column(db,"import_drafts","import_key","TEXT DEFAULT NULL")
         add_column(db,"import_drafts","published_car_id","INTEGER DEFAULT NULL")
         db.execute("CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)")
@@ -488,6 +490,11 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
         db.execute("DELETE FROM import_drafts WHERE id IN (SELECT id FROM import_drafts WHERE user_id=? AND status='draft' ORDER BY id DESC LIMIT -1 OFFSET 100)",(str(user_id),))
         return draft_id,True
 
+def record_partner_source_event(platform,source_ref,error=""):
+    try:
+        with connect() as db: db.execute("UPDATE partner_sources SET last_event_at=?,last_error=?,updated_at=? WHERE platform=? AND source_ref=?",(NOW().isoformat(),clean_text(error,80),NOW().isoformat(),platform,str(source_ref)))
+    except Exception: pass
+
 def telegram_import_listing(update):
     message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
     chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
@@ -502,8 +509,9 @@ def telegram_import_listing(update):
             if import_draft_exists(import_key): return
             photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
             if not created: return
+            record_partner_source_event("telegram",chat_id)
             notify_import_user(owner_id,"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.",draft_id)
-        except Exception as exc: print(f"Partner Telegram import failed: {type(exc).__name__}")
+        except Exception as exc: record_partner_source_event("telegram",chat_id,type(exc).__name__); print(f"Partner Telegram import failed: {type(exc).__name__}")
         return
     if str(chat_id)!=str(user_id): return
     forwarded=bool(message.get("forward_origin") or message.get("forward_from_chat") or message.get("forward_date"))
@@ -586,9 +594,10 @@ def vk_import_listing(group_id,owner_id,post):
         except Exception: photos=[]
         draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos)
         if not created: return
+        record_partner_source_event("vk",group_id)
         notify_import_user(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id)
         record_audit(owner_id,"vk_import_draft",draft_id)
-    except Exception as exc: print(f"Partner VK import failed: {type(exc).__name__}")
+    except Exception as exc: record_partner_source_event("vk",group_id,type(exc).__name__); print(f"Partner VK import failed: {type(exc).__name__}")
 
 def notify_price_drop(car_id,name,old_price,new_price):
     if not BOT_TOKEN: return
@@ -866,7 +875,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
             result=[]
             with connect() as db:
-                rows=db.execute("""SELECT id,platform,source_ref,title,status,created_at,updated_at,
+                rows=db.execute("""SELECT id,platform,source_ref,title,status,created_at,updated_at,last_event_at,last_error,
                     CASE WHEN platform='telegram' OR (COALESCE(secret_hash,'')<>'' AND COALESCE(confirmation_code,'')<>'') THEN 1 ELSE 0 END AS configured
                     FROM partner_sources ORDER BY id DESC""").fetchall()
                 for row in rows:
