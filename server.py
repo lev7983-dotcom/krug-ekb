@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v142"
+APP_RELEASE="v143"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -503,6 +503,7 @@ def telegram_import_listing(update):
         try:
             with connect() as db: source=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=? AND status='active'",(str(chat_id),)).fetchone()
             if not source: return
+            record_partner_source_event("telegram",chat_id)
             if not looks_like_vehicle_listing(text): return
             if not rate_allowed(("telegram_import",str(chat_id)),60,3600): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
@@ -957,6 +958,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if not source or not supplied: return self.send_json({"error":"Not found"},404)
                 owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); secret_hash=str(source["secret_hash"] if DATABASE_URL else source[1]); confirmation=str(source["confirmation_code"] if DATABASE_URL else source[2])
                 if not secret_hash or not hmac.compare_digest(hashlib.sha256(supplied.encode("utf-8")).hexdigest(),secret_hash): return self.send_json({"error":"Not found"},404)
+                record_partner_source_event("vk",group_id)
                 event_type=str(data.get("type") or "")
                 if event_type=="confirmation": return self.send_text(confirmation)
                 if event_type=="wall_post_new":
