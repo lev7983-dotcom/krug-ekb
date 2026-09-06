@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v155"
+APP_RELEASE="v156"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -562,8 +562,12 @@ def telegram_connect_source(update):
             telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Сначала откройте КРУГ в личном чате и примите правила, затем повторите /krug_source."}); return
         now=NOW().isoformat(); title=clean_text(chat.get("title") or "Telegram-группа",120)
         with connect() as db:
+            existing=db.execute("SELECT owner_id FROM partner_sources WHERE platform='telegram' AND source_ref=?",(str(chat_id),)).fetchone()
+            existing_owner=str((existing["owner_id"] if DATABASE_URL else existing[0]) if existing else "")
+            if existing_owner and existing_owner!=str(user_id):
+                telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Эта группа уже подключена другим администратором КРУГ. Для смены владельца обратитесь к администратору сервиса."}); return
             params=(str(user_id),"telegram",str(chat_id),title,"active",now,now)
-            db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',updated_at=excluded.updated_at",params)
+            db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET title=excluded.title,status='active',updated_at=excluded.updated_at",params)
         record_audit(str(user_id),"telegram_source_connected",str(chat_id))
         telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"✅ Группа подключена к КРУГ. Новые автомобильные публикации будут приходить администратору как черновики и не появятся в каталоге без ручной проверки."})
     except Exception as exc: print(f"Telegram source connect failed: {type(exc).__name__}")
