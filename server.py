@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v156"
+APP_RELEASE="v157"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -498,17 +498,23 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
     parsed=parse_imported_listing(text); now=NOW().isoformat(); parsed["images"]=list(images or [])[:1]
     safe_key=clean_text(import_key,240) or None
     params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now,safe_key)
-    with connect() as db:
-        if safe_key:
-            existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
-            if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
-        if DATABASE_URL:
-            row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
+    try:
+        with connect() as db:
+            if safe_key:
+                existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
+                if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
+            if DATABASE_URL:
+                row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
+            else: draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid)
             trim_import_queue(db,user_id)
             return draft_id,True
-        draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid)
-        trim_import_queue(db,user_id)
-        return draft_id,True
+    except Exception:
+        # Telegram and VK may retry concurrently. A competing insert that won the
+        # unique import_key race is a normal duplicate, not a broken source.
+        if safe_key:
+            with connect() as db: existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
+            if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
+        raise
 
 def record_partner_source_event(platform,source_ref,error=""):
     try:
