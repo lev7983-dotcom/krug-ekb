@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v147"
+APP_RELEASE="v148"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -507,7 +507,7 @@ def record_partner_source_event(platform,source_ref,error=""):
     except Exception: pass
 
 def telegram_import_listing(update):
-    message=update.get("message") or {}; text=str(message.get("text") or message.get("caption") or "")
+    message=update.get("message") or update.get("channel_post") or {}; text=str(message.get("text") or message.get("caption") or "")
     chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
     if not text or text.startswith("/") or not chat_id: return
     if chat.get("type")!="private":
