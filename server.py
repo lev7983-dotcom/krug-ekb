@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v151"
+APP_RELEASE="v152"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -1204,6 +1204,12 @@ class Handler(SimpleHTTPRequestHandler):
             with connect() as db: cur=db.execute("UPDATE partner_sources SET status='disabled',updated_at=? WHERE id=? AND status<>'disabled'",(NOW().isoformat(),int(source.group(1))))
             if cur.rowcount: record_audit(uid,"partner_source_disabled",source.group(1))
             return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
+        source_remove=re.fullmatch(r"/api/admin/partner-sources/(\d+)/remove",path)
+        if source_remove:
+            if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
+            with connect() as db: cur=db.execute("DELETE FROM partner_sources WHERE id=? AND status='disabled'",(int(source_remove.group(1)),))
+            if cur.rowcount: record_audit(uid,"partner_source_removed",source_remove.group(1))
+            return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 409)
         exchange=re.fullmatch(r"/api/exchanges/(\d+)",path)
         if exchange:
             with connect() as db: cur=db.execute("DELETE FROM exchanges WHERE id=? AND from_user=? AND status='new'",(int(exchange.group(1)),uid))
