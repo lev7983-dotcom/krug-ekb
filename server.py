@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v149"
+APP_RELEASE="v150"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -664,9 +664,9 @@ def setup_telegram_webhook():
         webhook=f"{base}/api/telegram/webhook"
         identity=telegram_call("getMe",{})
         TELEGRAM_STATUS.update({"api_ok":bool(identity.get("ok")),"bot_username":str((identity.get("result") or {}).get("username") or ""),"error":""})
-        telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message"]})
+        telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message","channel_post"]})
         telegram_call("setChatMenuButton",{"menu_button":{"type":"web_app","text":"Открыть КРУГ","web_app":{"url":web_app_url()}}})
-        telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"}]})
+        telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"},{"command":"krug_source","description":"Подключить Telegram-группу"}]})
         info=telegram_call("getWebhookInfo",{}).get("result") or {}
         TELEGRAM_STATUS.update({"webhook_ok":str(info.get("url") or "")==webhook,"pending_updates":min(int(info.get("pending_update_count") or 0),9999),"last_error":clean_text(info.get("last_error_message") or "",120)})
         print("Telegram webhook configured")
