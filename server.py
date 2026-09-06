@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v150"
+APP_RELEASE="v151"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -452,6 +452,15 @@ def telegram_photo_data(message):
     if len(raw)>3_000_000: raise ValueError("Фотография из Telegram слишком большая")
     return [validated_image("data:image/jpeg;base64,"+base64.b64encode(raw).decode("ascii"),2_000_000,1600)]
 
+def telegram_message_url(message):
+    """Return a safe public Telegram post URL when the source exposes a username."""
+    chat=message.get("chat") if isinstance(message.get("chat"),dict) else {}
+    username=str(chat.get("username") or "").strip().lstrip("@")
+    try: message_id=int(message.get("message_id") or 0)
+    except (TypeError,ValueError): return ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}",username) or message_id<=0: return ""
+    return f"https://t.me/{username}/{message_id}"
+
 def vk_photo_data(post):
     """Download one photo URL supplied by a signed official VK callback event."""
     attachments=post.get("attachments") if isinstance(post.get("attachments"),list) else []
@@ -519,7 +528,7 @@ def telegram_import_listing(update):
             if not rate_allowed(("telegram_import",str(chat_id)),60,3600): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
             if import_draft_exists(import_key): return
-            photos=telegram_photo_data(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,import_key=import_key,images=photos)
+            photos=telegram_photo_data(message); source_url=telegram_message_url(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,source_url=source_url,import_key=import_key,images=photos)
             if not created: return
             record_partner_source_event("telegram",chat_id)
             notify_import_user(owner_id,"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.",draft_id)
