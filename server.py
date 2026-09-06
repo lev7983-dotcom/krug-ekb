@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v153"
+APP_RELEASE="v154"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -1225,7 +1225,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not can_manage_staff(uid): return self.send_json({"error":"Доступ только для администратора"},403)
             target=staff.group(1)
             if target in ADMIN_IDS: return self.send_json({"error":"Нельзя удалить владельца"},400)
-            with connect() as db: cur=db.execute("DELETE FROM staff_roles WHERE user_id=?",(target,))
+            with connect() as db:
+                cur=db.execute("DELETE FROM staff_roles WHERE user_id=?",(target,))
+                if cur.rowcount: db.execute("UPDATE partner_sources SET status='disabled',updated_at=? WHERE owner_id=? AND status='active'",(NOW().isoformat(),target))
             if cur.rowcount: record_audit(uid,"staff_removed",target)
             return self.send_json({"ok":bool(cur.rowcount)},200 if cur.rowcount else 404)
         m=re.fullmatch(r"/api/cars/(\d+)",path)
