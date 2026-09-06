@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v154"
+APP_RELEASE="v155"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -531,7 +531,8 @@ def telegram_import_listing(update):
             photos=telegram_photo_data(message); source_url=telegram_message_url(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,source_url=source_url,import_key=import_key,images=photos)
             if not created: return
             record_partner_source_event("telegram",chat_id)
-            notify_import_user(owner_id,"Новый черновик из партнёрской Telegram-группы подготовлен. Проверьте данные перед публикацией.",draft_id)
+            source_kind="канала" if chat.get("type")=="channel" else "группы"
+            notify_import_user(owner_id,f"Новый черновик из партнёрского Telegram-{source_kind} подготовлен. Проверьте данные перед публикацией.",draft_id)
         except Exception as exc: record_partner_source_event("telegram",chat_id,type(exc).__name__); print(f"Partner Telegram import failed: {type(exc).__name__}")
         return
     if str(chat_id)!=str(user_id): return
