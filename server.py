@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v152"
+APP_RELEASE="v153"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -1181,7 +1181,7 @@ class Handler(SimpleHTTPRequestHandler):
             deleted_actor="deleted:"+hashlib.sha256((WEBHOOK_SECRET+":"+uid).encode("utf-8")).hexdigest()[:20]
             with connect() as db:
                 owned=db.execute("SELECT id FROM cars WHERE owner_id=?",(uid,)).fetchall(); car_ids=[int(r["id"] if DATABASE_URL else r[0]) for r in owned]
-                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,)); db.execute("DELETE FROM car_views WHERE viewer_id=?",(uid,)); db.execute("DELETE FROM staff_roles WHERE user_id=?",(uid,)); db.execute("DELETE FROM import_drafts WHERE user_id=?",(uid,))
+                db.execute("DELETE FROM favourites WHERE user_id=?",(uid,)); db.execute("DELETE FROM subscriptions WHERE telegram_user=?",(uid,)); db.execute("DELETE FROM reports WHERE reporter_id=?",(uid,)); db.execute("DELETE FROM exchanges WHERE from_user=?",(uid,)); db.execute("DELETE FROM car_views WHERE viewer_id=?",(uid,)); db.execute("DELETE FROM staff_roles WHERE user_id=?",(uid,)); db.execute("DELETE FROM import_drafts WHERE user_id=?",(uid,)); db.execute("DELETE FROM partner_sources WHERE owner_id=?",(uid,))
                 db.execute("UPDATE staff_roles SET created_by=? WHERE created_by=?",(deleted_actor,uid))
                 db.execute("UPDATE audit_log SET actor_id=? WHERE actor_id=?",(deleted_actor,uid))
                 db.execute("UPDATE audit_log SET target='' WHERE target=? OR target LIKE ?",(uid,uid+":%"))
