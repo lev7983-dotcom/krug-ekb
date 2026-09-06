@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v146"
+APP_RELEASE="v147"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -1181,6 +1181,10 @@ class Handler(SimpleHTTPRequestHandler):
             record_audit(deleted_actor,"account_deleted")
             return self.send_json({"ok":True,"deleted":True})
         if not self.require_consent(uid): return
+        if path=="/api/imports":
+            with connect() as db: cur=db.execute("DELETE FROM import_drafts WHERE user_id=? AND status='draft'",(uid,))
+            deleted=max(0,int(cur.rowcount or 0)); record_audit(uid,"import_drafts_cleared",deleted)
+            return self.send_json({"ok":True,"deleted":deleted})
         imported=re.fullmatch(r"/api/imports/(\d+)",path)
         if imported:
             with connect() as db: cur=db.execute("DELETE FROM import_drafts WHERE id=? AND user_id=? AND status='draft'",(int(imported.group(1)),uid))
