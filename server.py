@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v159"
+APP_RELEASE="v160"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -412,12 +412,11 @@ def parse_imported_listing(text):
         except ValueError: return 0
     def price_number(match):
         if not match: return 0
-        raw=match.group(1).replace(" ","").replace(",","."); suffix=(match.group(2) or "").lower()
-        try: amount=float(raw)
+        raw=match.group(1).replace(" ",""); suffix=(match.group(2) or "").lower()
+        if not suffix: return int(re.sub(r"\D","",raw) or 0)
+        try: amount=float(raw.replace(",","."))
         except ValueError: return 0
-        if suffix=="млн": amount*=1_000_000
-        elif suffix in {"тыс","т"}: amount*=1_000
-        return int(amount)
+        return int(amount*(1_000_000 if suffix=="млн" else 1_000))
     brand_words=r"toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген|audi|ауди|skoda|шкода|chevrolet|шевроле|mazda|мазда|mitsubishi|мицубиси|subaru|субару|lexus|лексус|honda|хонда|geely|джили|chery|чери|haval|хавал|exeed|эксид|omoda|омода|moskvich|москвич|уаз|gaz|газ"
     title=next((line for line in lines if re.search(rf"\b(?:{brand_words})\b",line,re.I)),next((line for line in lines if not line.lower().startswith(("http://","https://"))),""))
     phone=""
