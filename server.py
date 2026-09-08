@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v162"
+APP_RELEASE="v163"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -432,7 +432,10 @@ def parse_imported_listing(text):
     volume_match=re.search(r"(?<!\d)(\d(?:[.,]\d)?)\s*л(?:\.|\s|,|$)",lowered); power_match=re.search(r"(?<!\d)(\d{2,4})\s*л\.?\s*с\.?",lowered)
     engine_volume=float(volume_match.group(1).replace(",",".")) if volume_match else 0
     engine_power=int(power_match.group(1)) if power_match else 0
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power}
+    owners_match=re.search(r"\b([1-9])\s*(?:владелец|владельца|владельцев)\b",lowered); owners_count=min(int(owners_match.group(1)),4) if owners_match else 0
+    color_match=re.search(r"\b(?:ч[её]рный|белый|серый|серебристый|синий|голубой|красный|зел[её]ный|бежевый|коричневый|ж[её]лтый|оранжевый|фиолетовый)\b",lowered)
+    color=(color_match.group(0).replace("черный","чёрный").replace("зеленый","зелёный").replace("желтый","жёлтый").capitalize() if color_match else "")
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
