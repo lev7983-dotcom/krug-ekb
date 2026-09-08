@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v161"
+APP_RELEASE="v162"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -424,7 +424,15 @@ def parse_imported_listing(text):
     if phone_match:
         try: phone=normalize_phone(phone_match.group(0))
         except ValueError: pass
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
+    lowered=value.lower()
+    transmission="Автомат" if re.search(r"\b(?:акпп|автомат)\b",lowered) else "Механика" if re.search(r"\b(?:мкпп|механик[аи])\b",lowered) else "Робот" if re.search(r"\b(?:робот|dsg)\b",lowered) else "Вариатор" if re.search(r"\b(?:вариатор|cvt)\b",lowered) else ""
+    body_type=next((label for pattern,label in ((r"\bседан\b","Седан"),(r"\bх[эе]тчб[еэ]к\b","Хэтчбек"),(r"\bуниверсал\b","Универсал"),(r"\bкроссовер\b","Кроссовер"),(r"\bвнедорожник\b","Внедорожник"),(r"\bминив[эе]н\b","Минивэн"),(r"\bкупе\b","Купе"),(r"\bпикап\b","Пикап")) if re.search(pattern,lowered)),"")
+    drive="Полный" if re.search(r"\b(?:полный\s+привод|4wd|awd|4x4)\b",lowered) else "Передний" if re.search(r"\bпередний\s+привод\b",lowered) else "Задний" if re.search(r"\bзадний\s+привод\b",lowered) else ""
+    fuel="Дизель" if re.search(r"\bдизел",lowered) else "Гибрид" if re.search(r"\bгибрид",lowered) else "Электро" if re.search(r"\bэлектро",lowered) else "Газ" if re.search(r"\b(?:газ|гбо)\b",lowered) else "Бензин" if re.search(r"\bбензин",lowered) else ""
+    volume_match=re.search(r"(?<!\d)(\d(?:[.,]\d)?)\s*л(?:\.|\s|,|$)",lowered); power_match=re.search(r"(?<!\d)(\d{2,4})\s*л\.?\s*с\.?",lowered)
+    engine_volume=float(volume_match.group(1).replace(",",".")) if volume_match else 0
+    engine_power=int(power_match.group(1)) if power_match else 0
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
