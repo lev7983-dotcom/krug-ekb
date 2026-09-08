@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v164"
+APP_RELEASE="v165"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -214,7 +214,11 @@ SEARCH_ALIASES={
     "бмв":"bmw","хендай":"hyundai","хундай":"hyundai","хёндай":"hyundai","киа":"kia","ниссан":"nissan",
     "рено":"renault","шевроле":"chevrolet","шкода":"skoda","ауди":"audi","хонда":"honda","мазда":"mazda",
     "митсубиси":"mitsubishi","мицубиси":"mitsubishi","лексус":"lexus","субару":"subaru","пежо":"peugeot",
-    "ситроен":"citroen","опель":"opel","вольво":"volvo","джили":"geely","хавал":"haval","чери":"chery","уаз":"uaz","газ":"gaz"
+    "ситроен":"citroen","опель":"opel","вольво":"volvo","сузуки":"suzuki","инфинити":"infiniti","порше":"porsche",
+    "ленд":"land","ровер":"rover","лендровер":"landrover","джип":"jeep","дэу":"daewoo","датсун":"datsun",
+    "джили":"geely","хавал":"haval","чери":"chery","эксид":"exeed","омода":"omoda","чанган":"changan",
+    "гак":"gac","джак":"jac","баик":"baic","танк":"tank","зикр":"zeekr","воя":"voyah","джетур":"jetour",
+    "лисян":"li","грейт":"great","вол":"wall","москвич":"moskvich","уаз":"uaz","газ":"gaz"
 }
 CYRILLIC_LATIN=dict(zip("абвгдежзийклмнопрстуфхцчшщъыьэюя",("a","b","v","g","d","e","zh","z","i","i","k","l","m","n","o","p","r","s","t","u","f","h","c","ch","sh","sh","","i","","e","yu","ya")))
 def normalize_search(value):

@@ -558,7 +558,11 @@ const krugBrandAliases={
   skoda:['skoda','шкода'],audi:['audi','ауди'],honda:['honda','хонда'],mazda:['mazda','мазда'],
   mitsubishi:['mitsubishi','митсубиси','мицубиси'],lexus:['lexus','лексус'],subaru:['subaru','субару'],
   peugeot:['peugeot','пежо'],citroen:['citroen','ситроен'],opel:['opel','опель'],volvo:['volvo','вольво'],
-  geely:['geely','джили'],haval:['haval','хавал'],chery:['chery','чери'],uaz:['uaz','уаз'],gaz:['gaz','газ']
+  suzuki:['suzuki','сузуки'],infiniti:['infiniti','инфинити'],porsche:['porsche','порше'],land:['land','ленд'],rover:['rover','ровер'],
+  jeep:['jeep','джип'],daewoo:['daewoo','дэу'],datsun:['datsun','датсун'],geely:['geely','джили'],haval:['haval','хавал'],
+  chery:['chery','чери'],exeed:['exeed','эксид'],omoda:['omoda','омода'],changan:['changan','чанган'],gac:['gac','гак'],
+  jac:['jac','джак'],baic:['baic','баик'],tank:['tank','танк'],zeekr:['zeekr','зикр'],voyah:['voyah','воя'],jetour:['jetour','джетур'],
+  li:['li','лисян'],great:['great','грейт'],wall:['wall','вол'],moskvich:['moskvich','москвич'],uaz:['uaz','уаз'],gaz:['gaz','газ']
 };
 const krugAliasIndex=Object.entries(krugBrandAliases).reduce((index,[brand,names])=>{names.forEach(name=>index[name.replace(/ё/g,'е')]=brand);return index},{});
 const krugCyrillicLatin={а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'c',ч:'ch',ш:'sh',щ:'sh',ъ:'',ы:'i',ь:'',э:'e',ю:'yu',я:'ya'};
