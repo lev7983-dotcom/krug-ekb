@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v158"
+APP_RELEASE="v159"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -398,12 +398,18 @@ def parse_imported_listing(text):
     """Extract only obvious vehicle fields; the user must verify every value."""
     value=clean_text(text,5000); lines=[line.strip(" •\t-") for line in value.splitlines() if line.strip()]
     year_match=re.search(r"(?<!\d)((?:19|20)\d{2})(?!\d)",value)
-    km_match=re.search(r"(?<!\d)(\d[\d\s.]{0,10})\s*(?:км|km)\b",value,re.I)
+    km_match=re.search(r"(?<!\d)(\d[\d\s.,]{0,10})\s*(тыс|т)?\.?\s*(?:км|km)\b",value,re.I)
     price_match=re.search(r"(?<!\d)(\d[\d\s.,]{0,14})\s*(?:(млн|тыс|т)\.?\s*(?:₽|руб(?:лей|ля|ль)?\.?|р\.?)?|(?:₽|руб(?:лей|ля|ль)?\.?|р\.))",value,re.I)
     if not price_match: price_match=re.search(r"\bцена\s*[:\-]?\s*(\d[\d\s.,]{2,14})\s*(млн|тыс)?",value,re.I)
     phone_match=re.search(r"(?:\+7|8)[\s()\-]*\d{3}[\s()\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}",value)
     source_match=re.search(r"https?://(?:www\.)?(?:vk\.com|t\.me)/[^\s]+",value,re.I)
     def number(match): return int(re.sub(r"\D","",match.group(1))) if match else 0
+    def distance_number(match):
+        if not match: return 0
+        suffix=(match.group(2) or "").lower(); raw=match.group(1).strip()
+        if not suffix: return int(re.sub(r"\D","",raw) or 0)
+        try: return int(float(raw.replace(" ","").replace(",","."))*1_000)
+        except ValueError: return 0
     def price_number(match):
         if not match: return 0
         raw=match.group(1).replace(" ","").replace(",","."); suffix=(match.group(2) or "").lower()
@@ -418,7 +424,7 @@ def parse_imported_listing(text):
     if phone_match:
         try: phone=normalize_phone(phone_match.group(0))
         except ValueError: pass
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else ""}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
