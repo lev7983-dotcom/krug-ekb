@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v167"
+APP_RELEASE="v168"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -626,6 +626,15 @@ def telegram_call(method,payload):
     raw=json.dumps(payload,ensure_ascii=False).encode("utf-8")
     return json.load(urlopen(Request(f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",data=raw,headers={"Content-Type":"application/json"}),timeout=12))
 
+def validate_telegram_partner_source(source_ref):
+    identity=(telegram_call("getMe",{}).get("result") or {}); bot_id=identity.get("id")
+    if not bot_id: raise ValueError("bot_identity_missing")
+    chat=(telegram_call("getChat",{"chat_id":str(source_ref)}).get("result") or {})
+    if str(chat.get("type") or "") not in {"group","supergroup","channel"}: raise ValueError("unsupported_chat")
+    membership=(telegram_call("getChatMember",{"chat_id":str(source_ref),"user_id":str(bot_id)}).get("result") or {})
+    if membership.get("status") not in {"creator","administrator"}: raise PermissionError("bot_not_admin")
+    return clean_text(chat.get("title") or "Telegram-источник",120)
+
 def notify_exchange_user(chat_id,text,car_id=None):
     if not BOT_TOKEN or not str(chat_id).isdigit(): return
     try:
@@ -1065,6 +1074,13 @@ class Handler(SimpleHTTPRequestHandler):
                 if platform=="telegram" and not re.fullmatch(r"-100\d{6,20}",source_ref): return self.send_json({"error":"Укажите ID Telegram-группы вида -100..."},400)
                 if platform=="vk" and not re.fullmatch(r"\d{1,20}",source_ref): return self.send_json({"error":"Укажите числовой ID сообщества VK"},400)
                 if platform=="vk" and (not 8<=len(callback_secret)<=100 or not 3<=len(confirmation_code)<=120): return self.send_json({"error":"Для VK укажите секрет и строку подтверждения Callback API"},400)
+                if platform=="telegram" and BOT_TOKEN:
+                    try:
+                        title=title or validate_telegram_partner_source(source_ref)
+                    except PermissionError:
+                        return self.send_json({"error":"Сначала добавьте бота КРУГ администратором этой группы или канала"},400)
+                    except Exception:
+                        return self.send_json({"error":"Не удалось проверить Telegram-источник. Проверьте ID и права бота"},400)
                 with connect() as db:
                     params=(uid,platform,source_ref,title or ("Telegram-источник" if platform=="telegram" else "Сообщество VK"),"active",hashlib.sha256(callback_secret.encode("utf-8")).hexdigest() if callback_secret else "",confirmation_code if platform=="vk" else "",now,now)
                     if DATABASE_URL: row=db.execute("INSERT INTO partner_sources(owner_id,platform,source_ref,title,status,secret_hash,confirmation_code,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(platform,source_ref) DO UPDATE SET owner_id=excluded.owner_id,title=excluded.title,status='active',secret_hash=excluded.secret_hash,confirmation_code=excluded.confirmation_code,updated_at=excluded.updated_at RETURNING id",params).fetchone(); source_id=int(row["id"])
