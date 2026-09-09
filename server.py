@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v169"
+APP_RELEASE="v170"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -442,7 +442,10 @@ def parse_imported_listing(text):
     color_match=re.search(rf"\bцвет\s*[:\-]?\s*({colors})\b|\b({colors})\s+цвета\b",lowered)
     color_raw=(color_match.group(1) or color_match.group(2)) if color_match else ""
     color=(color_raw.replace("черный","чёрный").replace("зеленый","зелёный").replace("желтый","жёлтый").capitalize() if color_raw else "")
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"vin":vin_match.group(1).upper() if vin_match else "","description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
+    safe_description=value
+    if phone_match: safe_description=safe_description.replace(phone_match.group(0),"Контакт указан в оригинале")
+    safe_description=re.sub(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b","Контакт указан в оригинале",safe_description,flags=re.I)
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"vin":vin_match.group(1).upper() if vin_match else "","description":safe_description,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()

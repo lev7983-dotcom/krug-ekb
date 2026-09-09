@@ -1070,7 +1070,7 @@ async function loadKrugImportedDraft(){
   krugImportLoaded=importId;
   try{
     const d=await krugJson(`/api/imports/${importId}`);krugActiveImportId=importId;
-    krugEditingId=0;carName.value=d.name||'';carYear.value=Number(d.year)||'';carPrice.value=Number(d.price)||'';carKm.value=Number(d.km)||'';carPhone.value=d.phone||'';
+    krugEditingId=0;carName.value=d.name||'';carYear.value=Number(d.year)||'';carPrice.value=Number(d.price)||'';carKm.value=Number(d.km)||'';carPhone.value='';
     carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||'';carFuel.value=d.fuel||'';carEngineVolume.value=Number(d.engine_volume)||'';carEnginePower.value=Number(d.engine_power)||'';carColor.value=d.color||'';carOwners.value=String(Math.min(Number(d.owners_count)||0,4));
     krugImagesData=(d.images||[]).map(safeImageSrc);krugImageData=krugImagesData[0]||'';krugThumbnailData=krugImageData?await krugThumbnailFromData(krugImageData):'';krugRenderPhotoPreviews();
     carDescription.value=[d.description||'',d.source_url?`Источник: ${d.source_url}`:''].filter(Boolean).join('\n\n').slice(0,2000);
