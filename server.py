@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v165"
+APP_RELEASE="v166"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -407,6 +407,7 @@ def parse_imported_listing(text):
     price_match=next((match for match in price_candidates if not re.match(r"\s*(?:км|km)\b",value[match.end():],re.I)),None)
     if not price_match: price_match=re.search(r"\bцена\s*[:\-]?\s*(\d[\d\s.,]{2,14})\s*(млн|тыс)?",value,re.I)
     phone_match=re.search(r"(?:\+7|8)[\s()\-]*\d{3}[\s()\-]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}",value)
+    vin_match=re.search(r"\b(?:vin\s*[:#\-]?\s*)?([A-HJ-NPR-Z0-9]{17})\b",value,re.I)
     source_match=re.search(r"https?://(?:www\.)?(?:vk\.com|t\.me)/[^\s]+",value,re.I)
     def number(match): return int(re.sub(r"\D","",match.group(1))) if match else 0
     def distance_number(match):
@@ -441,7 +442,7 @@ def parse_imported_listing(text):
     color_match=re.search(rf"\bцвет\s*[:\-]?\s*({colors})\b|\b({colors})\s+цвета\b",lowered)
     color_raw=(color_match.group(1) or color_match.group(2)) if color_match else ""
     color=(color_raw.replace("черный","чёрный").replace("зеленый","зелёный").replace("желтый","жёлтый").capitalize() if color_raw else "")
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"vin":vin_match.group(1).upper() if vin_match else "","description":value,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
