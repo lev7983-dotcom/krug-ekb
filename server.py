@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v172"
+APP_RELEASE="v173"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -516,7 +516,7 @@ def trim_import_queue(db,user_id,max_count=100,max_bytes=25_000_000):
     if remove: db.executemany("DELETE FROM import_drafts WHERE id=?",remove)
     return len(remove)
 
-def create_import_draft(user_id,source_type,text,source_url="",import_key="",images=None):
+def create_import_draft(user_id,source_type,text,source_url="",import_key="",images=None,replace_existing=False):
     """Create a private, user-bound draft. Imported content is never auto-published."""
     parsed=parse_imported_listing(text); now=NOW().isoformat(); parsed["images"]=list(images or [])[:1]
     safe_key=clean_text(import_key,240) or None
@@ -527,22 +527,23 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
                 existing=db.execute("SELECT id,status,parsed_json FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
                 if existing:
                     existing_id=int(existing["id"] if DATABASE_URL else existing[0]); existing_status=existing["status"] if DATABASE_URL else existing[1]
-                    if existing_status=="draft":
+                    if existing_status=="draft" and replace_existing:
                         old_payload=json.loads((existing["parsed_json"] if DATABASE_URL else existing[2]) or "{}")
                         if not parsed.get("images") and old_payload.get("images"): parsed["images"]=old_payload["images"]
                         db.execute("UPDATE import_drafts SET source_url=?,original_text=?,parsed_json=?,created_at=? WHERE id=?",(params[2],params[3],json.dumps(parsed,ensure_ascii=False),now,existing_id))
-                    return existing_id,False
+                        return existing_id,"updated"
+                    return existing_id,"duplicate"
             if DATABASE_URL:
                 row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
             else: draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid)
             trim_import_queue(db,user_id)
-            return draft_id,True
+            return draft_id,"created"
     except Exception:
         # Telegram and VK may retry concurrently. A competing insert that won the
         # unique import_key race is a normal duplicate, not a broken source.
         if safe_key:
             with connect() as db: existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
-            if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
+            if existing: return int(existing["id"] if DATABASE_URL else existing[0]),"duplicate"
         raise
 
 def record_partner_source_event(platform,source_ref,error=""):
@@ -552,6 +553,7 @@ def record_partner_source_event(platform,source_ref,error=""):
 
 def telegram_import_listing(update):
     message=update.get("message") or update.get("channel_post") or update.get("edited_message") or update.get("edited_channel_post") or {}; text=str(message.get("text") or message.get("caption") or "")
+    edited=bool(update.get("edited_message") or update.get("edited_channel_post"))
     chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
     if not text or text.startswith("/") or not chat_id: return
     if chat.get("type")!="private":
@@ -562,11 +564,12 @@ def telegram_import_listing(update):
             if not looks_like_vehicle_listing(text): return
             if not rate_allowed(("telegram_import",str(chat_id)),60,3600): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
-            photos=telegram_photo_data(message); source_url=telegram_message_url(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,source_url=source_url,import_key=import_key,images=photos)
-            if not created: return
+            photos=telegram_photo_data(message); source_url=telegram_message_url(message); draft_id,outcome=create_import_draft(owner_id,"telegram_group",text,source_url=source_url,import_key=import_key,images=photos,replace_existing=edited)
+            if outcome=="duplicate": return
             record_partner_source_event("telegram",chat_id)
             source_kind="канала" if chat.get("type")=="channel" else "группы"
-            notify_import_user(owner_id,f"Новый черновик из партнёрского Telegram-{source_kind} подготовлен. Проверьте данные перед публикацией.",draft_id)
+            notice=f"Черновик из Telegram-{source_kind} обновлён после изменения исходного поста." if outcome=="updated" else f"Новый черновик из партнёрского Telegram-{source_kind} подготовлен. Проверьте данные перед публикацией."
+            notify_import_user(owner_id,notice,draft_id)
         except Exception as exc: record_partner_source_event("telegram",chat_id,type(exc).__name__); print(f"Partner Telegram import failed: {type(exc).__name__}")
         return
     if str(chat_id)!=str(user_id): return
@@ -578,8 +581,8 @@ def telegram_import_listing(update):
         import_key=f"private:{user_id}:{source_type}:{content_hash}"
         if import_draft_exists(import_key):
             telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Этот пост уже сохранён в ваших черновиках."}); return
-        photos=telegram_photo_data(message); draft_id,created=create_import_draft(user_id,source_type,text,import_key=import_key,images=photos)
-        if not created: return
+        photos=telegram_photo_data(message); draft_id,outcome=create_import_draft(user_id,source_type,text,import_key=import_key,images=photos)
+        if outcome!="created": return
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         notify_import_user(str(chat_id),f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.",draft_id)
     except Exception as exc: print(f"Telegram import failed: {type(exc).__name__}")
@@ -653,7 +656,7 @@ def notify_import_user(chat_id,text,draft_id):
         record_notification_delivery(bool(result.get("ok")),"telegram_rejected" if not result.get("ok") else "")
     except Exception as exc: record_notification_delivery(False,type(exc).__name__); print(f"Import notification failed: {type(exc).__name__}")
 
-def vk_import_listing(group_id,owner_id,post):
+def vk_import_listing(group_id,owner_id,post,edited=False):
     """Process a verified VK event outside the time-critical callback response."""
     try:
         text=str(post.get("text") or ""); post_id=int(post.get("id") or 0)
@@ -661,10 +664,11 @@ def vk_import_listing(group_id,owner_id,post):
         source_url=f"https://vk.com/wall-{group_id}_{post_id}" if post_id else f"https://vk.com/club{group_id}"
         try: photos=vk_photo_data(post)
         except Exception: photos=[]
-        draft_id,created=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos)
-        if not created: return
+        draft_id,outcome=create_import_draft(owner_id,"vk_group",text,source_url,f"vk:{group_id}:{post_id}",photos,replace_existing=edited)
+        if outcome=="duplicate": return
         record_partner_source_event("vk",group_id)
-        notify_import_user(owner_id,"Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией.",draft_id)
+        notice="Черновик из сообщества VK обновлён после изменения исходного поста." if outcome=="updated" else "Новый черновик из партнёрского сообщества VK подготовлен. Проверьте данные перед публикацией."
+        notify_import_user(owner_id,notice,draft_id)
         record_audit(owner_id,"vk_import_draft",draft_id)
     except Exception as exc: record_partner_source_event("vk",group_id,type(exc).__name__); print(f"Partner VK import failed: {type(exc).__name__}")
 
@@ -1031,9 +1035,9 @@ class Handler(SimpleHTTPRequestHandler):
                 record_partner_source_event("vk",group_id)
                 event_type=str(data.get("type") or "")
                 if event_type=="confirmation": return self.send_text(confirmation)
-                if event_type=="wall_post_new":
+                if event_type in {"wall_post_new","wall_post_edit"}:
                     obj=data.get("object") if isinstance(data.get("object"),dict) else {}; post=obj.get("post") if isinstance(obj.get("post"),dict) else obj
-                    threading.Thread(target=vk_import_listing,args=(group_id,owner_id,post),daemon=True).start()
+                    threading.Thread(target=vk_import_listing,args=(group_id,owner_id,post,event_type=="wall_post_edit"),daemon=True).start()
                 return self.send_text("ok")
             uid,authenticated,tg_user=auth_context(self.headers,data=data)
             if not self.require_auth(authenticated): return
