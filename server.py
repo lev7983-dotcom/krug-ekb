@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v178"
+APP_RELEASE="v179"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -508,6 +508,16 @@ def telegram_message_url(message):
     if not re.fullmatch(r"[A-Za-z0-9_]{5,32}",username) or message_id<=0: return ""
     return f"https://t.me/{username}/{message_id}"
 
+def telegram_forward_source_url(message):
+    """Recover a public channel link from Telegram's forward metadata."""
+    origin=message.get("forward_origin") if isinstance(message.get("forward_origin"),dict) else {}
+    chat=origin.get("chat") if isinstance(origin.get("chat"),dict) else message.get("forward_from_chat") if isinstance(message.get("forward_from_chat"),dict) else {}
+    username=str(chat.get("username") or "").strip().lstrip("@")
+    try: message_id=int(origin.get("message_id") or message.get("forward_from_message_id") or 0)
+    except (TypeError,ValueError): return ""
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}",username) or message_id<=0: return ""
+    return f"https://t.me/{username}/{message_id}"
+
 def vk_photo_data(post):
     """Download one photo URL supplied by a signed official VK callback event."""
     attachments=post.get("attachments") if isinstance(post.get("attachments"),list) else []
@@ -605,7 +615,8 @@ def telegram_import_listing(update):
         import_key=f"private:{user_id}:{source_type}:{content_hash}"
         if import_draft_exists(import_key):
             telegram_call("sendMessage",{"chat_id":str(chat_id),"text":"Этот пост уже сохранён в ваших черновиках."}); return
-        photos=telegram_photo_data(message); draft_id,outcome=create_import_draft(user_id,source_type,text,import_key=import_key,images=photos)
+        photos=telegram_photo_data(message); source_url=telegram_forward_source_url(message)
+        draft_id,outcome=create_import_draft(user_id,source_type,text,source_url=source_url,import_key=import_key,images=photos)
         if outcome!="created": return
         label="поста ВК" if source_type=="vk" else "пересланного сообщения"
         notify_import_user(str(chat_id),f"Черновик из {label} подготовлен. Проверьте марку, год, пробег, цену и контакт перед публикацией.",draft_id)
