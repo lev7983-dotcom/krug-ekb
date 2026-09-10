@@ -1109,3 +1109,13 @@ function removeImportDraft(id){askKrugConfirm({title:'Удалить черно�
 function clearImportDrafts(){askKrugConfirm({title:'Очистить очередь?',text:'Все непроверенные импортированные черновики будут удалены без возможности восстановления.',action:'Очистить',danger:true,onConfirm:async()=>{const result=await krugJson('/api/imports',{method:'DELETE'});clearKrugImportContext();toast(`Удалено черновиков: ${Number(result.deleted)||0}`);await showImportDrafts()}})}
 krugImportsButton.onclick=showImportDrafts;
 const krugLoadProfileBeforeImports=krugLoadProfile;krugLoadProfile=async function(){await krugLoadProfileBeforeImports();try{const d=await krugJson('/api/me'),count=Number(d.imports)||0;krugImportsButton.classList.toggle('show',count>0);krugImportsButton.innerHTML=`Черновики из источников <span>${count}</span>`}catch(_){krugImportsButton.classList.remove('show')}};
+
+/* KRUG source block 67 */
+// Published partner listings retain a safe path back to the original post.
+const krugOpenBeforeOriginalSource=openCarV3;
+openCarV3=async function(...args){
+  await krugOpenBeforeOriginalSource(...args);
+  const sheet=document.querySelector('.sheet');let button=sheet.querySelector('.original-source-action'),source=String(krugOpenedDetail?.source_url||'');
+  if(!button){button=document.createElement('button');button.className='btn back original-source-action';button.textContent='↗ Открыть оригинал';button.onclick=()=>openImportSource(button.dataset.source);sheet.insertBefore(button,sheet.lastElementChild)}
+  button.dataset.source=source;button.hidden=!source;
+};

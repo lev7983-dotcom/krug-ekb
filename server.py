@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v176"
+APP_RELEASE="v177"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -163,6 +163,7 @@ def init_db():
         add_column(db,"exchanges","offer_text","TEXT DEFAULT ''")
         add_column(db,"exchanges","cash_amount","INTEGER NOT NULL DEFAULT 0")
         add_column(db,"cars","publish_key","TEXT DEFAULT NULL")
+        add_column(db,"cars","source_url","TEXT DEFAULT ''")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_status_urgent_id ON cars(status,urgent,id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_cars_owner_status ON cars(owner_id,status)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_favourites_user_created ON favourites(user_id,created_at)")
@@ -405,6 +406,14 @@ def car_dict(row,faved=False):
     except (TypeError,json.JSONDecodeError): d["images"]=[]
     if not d["images"] and d.get("image"): d["images"]=[d["image"]]
     d["favourite"]=bool(faved); return d
+
+def safe_source_url(value):
+    """Keep only original links from supported partner platforms."""
+    url=str(value or "").strip()[:1000]
+    try:
+        parsed=urlparse(url); host=(parsed.hostname or "").lower()
+        return url if parsed.scheme=="https" and host in {"t.me","vk.com","www.vk.com"} else ""
+    except ValueError: return ""
 
 def web_app_url(car_id=None,import_id=None):
     separator="&" if "?" in PUBLIC_URL else "?"
@@ -1130,7 +1139,7 @@ class Handler(SimpleHTTPRequestHandler):
                 except (TypeError,ValueError): return self.send_json({"error":"Некорректный черновик"},400)
                 if import_id<0: return self.send_json({"error":"Некорректный черновик"},400)
                 if import_id:
-                    with connect() as db: imported_draft=db.execute("SELECT status,published_car_id FROM import_drafts WHERE id=? AND user_id=?",(import_id,uid)).fetchone()
+                    with connect() as db: imported_draft=db.execute("SELECT status,published_car_id,source_url FROM import_drafts WHERE id=? AND user_id=?",(import_id,uid)).fetchone()
                     if not imported_draft: return self.send_json({"error":"Черновик не найден"},404)
                 if publish_key:
                     with connect() as db:
@@ -1144,6 +1153,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if import_id:
                     draft_status=imported_draft["status"] if DATABASE_URL else imported_draft[0]
                     if draft_status!='draft': return self.send_json({"error":"Черновик уже опубликован"},409)
+                source_url=safe_source_url((imported_draft["source_url"] if DATABASE_URL else imported_draft[2]) if import_id else "")
                 urgent=bool(data.get("urgent")); deal="Срочно" if urgent else ("Обмен" if data.get("type")=="Обмен" else "Продажа"); until=(NOW()+timedelta(hours=24)).isoformat() if urgent else None
                 accept_exchange=int(bool(data.get("accept_exchange") or data.get("type")=="Обмен"))
                 phone=normalize_phone(data.get("phone")); phone_public=int(bool(phone) and data.get("phone_public") is True)
@@ -1160,7 +1170,7 @@ class Handler(SimpleHTTPRequestHandler):
                 fuel,engine_volume,engine_power,color,owners_count=vehicle_specs(data)
                 if vin and len(vin)!=17: return self.send_json({"error":"VIN должен содержать 17 символов"},400)
                 with connect() as db:
-                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key or None)); cid=cur.lastrowid
+                    cur=db.execute("INSERT INTO cars(name,price,year,km,type,urgent,description,phone,phone_public,contact_consent_at,consent_version,owner_id,created_at,updated_at,urgent_until,image,images,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key,source_url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",(name,price,year,f"{km:,}".replace(","," ")+" км",deal,int(urgent),clean_text(data.get("description"),2000),phone,phone_public,now,POLICY_VERSION,uid,now,now,until,image,images_json,transmission,body_type,drive,fuel,engine_volume,engine_power,color,owners_count,vin,thumbnail,accept_exchange,publish_key or None,source_url)); cid=cur.lastrowid
                     db.execute("UPDATE cars SET search_key=? WHERE id=?",(normalize_search(name),cid))
                     if import_id: db.execute("UPDATE import_drafts SET status='published',published_car_id=? WHERE id=? AND user_id=? AND status='draft'",(cid,import_id,uid))
                 record_audit(uid,"listing_created",cid)
