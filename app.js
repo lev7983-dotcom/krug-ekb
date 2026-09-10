@@ -1073,8 +1073,7 @@ async function loadKrugImportedDraft(){
     krugEditingId=0;carName.value=d.name||'';carYear.value=Number(d.year)||'';carPrice.value=Number(d.price)||'';carKm.value=Number(d.km)||'';carPhone.value='';
     carTransmission.value=d.transmission||'';carBodyType.value=d.body_type||'';carDrive.value=d.drive||'';carVin.value=d.vin||'';carFuel.value=d.fuel||'';carEngineVolume.value=Number(d.engine_volume)||'';carEnginePower.value=Number(d.engine_power)||'';carColor.value=d.color||'';carOwners.value=String(Math.min(Number(d.owners_count)||0,4));
     krugImagesData=(d.images||[]).map(safeImageSrc);krugImageData=krugImagesData[0]||'';krugThumbnailData=krugImageData?await krugThumbnailFromData(krugImageData):'';krugRenderPhotoPreviews();
-    const sourceLine=d.source_url?`Источник: ${d.source_url}`:'',descriptionLimit=Math.max(0,2000-sourceLine.length-(sourceLine?2:0));
-    carDescription.value=[String(d.description||'').slice(0,descriptionLimit),sourceLine].filter(Boolean).join('\n\n');
+    carDescription.value=String(d.description||'').slice(0,2000);
     contactPublicInput.checked=false;listingPrivacyInput.checked=krugPrivacyReady;legalAccepted.checked=true;go('create');nextStep(1);saveKrugDraft();paintKrugListingQuality();toast(Number(d.quality)>=80?'Черновик заполнен — проверьте данные':`Черновик заполнен на ${Number(d.quality)||0}% — дополните данные`);
   }catch(error){krugImportLoaded=0;toast(error.message||'Не удалось загрузить черновик')}
 }

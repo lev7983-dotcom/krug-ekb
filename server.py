@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v177"
+APP_RELEASE="v178"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -375,6 +375,7 @@ def car_detail_payload(row,faved,user_id,authenticated):
     data["phone"]=data.get("phone","") if contact_allowed and (owner or data.get("phone_public")) else ""
     data["seller_username"]=data.get("seller_username","") if contact_allowed else ""
     data["seller_name"]=data.get("seller_name","") if contact_allowed else ""
+    data["source_url"]=safe_source_url(data.get("source_url"))
     if not (owner and allowed): data["vin"]=masked_vin(data.get("vin"))
     for key in ("owner_id","search_key","contact_consent_at","consent_version","phone_public"):
         if not (owner and allowed): data.pop(key,None)
