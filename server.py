@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v171"
+APP_RELEASE="v172"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -524,8 +524,14 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
     try:
         with connect() as db:
             if safe_key:
-                existing=db.execute("SELECT id FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
-                if existing: return int(existing["id"] if DATABASE_URL else existing[0]),False
+                existing=db.execute("SELECT id,status,parsed_json FROM import_drafts WHERE import_key=?",(safe_key,)).fetchone()
+                if existing:
+                    existing_id=int(existing["id"] if DATABASE_URL else existing[0]); existing_status=existing["status"] if DATABASE_URL else existing[1]
+                    if existing_status=="draft":
+                        old_payload=json.loads((existing["parsed_json"] if DATABASE_URL else existing[2]) or "{}")
+                        if not parsed.get("images") and old_payload.get("images"): parsed["images"]=old_payload["images"]
+                        db.execute("UPDATE import_drafts SET source_url=?,original_text=?,parsed_json=?,created_at=? WHERE id=?",(params[2],params[3],json.dumps(parsed,ensure_ascii=False),now,existing_id))
+                    return existing_id,False
             if DATABASE_URL:
                 row=db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?) RETURNING id",params).fetchone(); draft_id=int(row["id"])
             else: draft_id=int(db.execute("INSERT INTO import_drafts(user_id,source_type,source_url,original_text,parsed_json,created_at,import_key) VALUES(?,?,?,?,?,?,?)",params).lastrowid)
@@ -545,7 +551,7 @@ def record_partner_source_event(platform,source_ref,error=""):
     except Exception: pass
 
 def telegram_import_listing(update):
-    message=update.get("message") or update.get("channel_post") or {}; text=str(message.get("text") or message.get("caption") or "")
+    message=update.get("message") or update.get("channel_post") or update.get("edited_message") or update.get("edited_channel_post") or {}; text=str(message.get("text") or message.get("caption") or "")
     chat=message.get("chat") or {}; sender=message.get("from") or {}; chat_id=chat.get("id"); user_id=sender.get("id")
     if not text or text.startswith("/") or not chat_id: return
     if chat.get("type")!="private":
@@ -556,7 +562,6 @@ def telegram_import_listing(update):
             if not looks_like_vehicle_listing(text): return
             if not rate_allowed(("telegram_import",str(chat_id)),60,3600): return
             owner_id=str(source["owner_id"] if DATABASE_URL else source[0]); import_key=f"telegram:{chat_id}:{int(message.get('message_id') or 0)}"
-            if import_draft_exists(import_key): return
             photos=telegram_photo_data(message); source_url=telegram_message_url(message); draft_id,created=create_import_draft(owner_id,"telegram_group",text,source_url=source_url,import_key=import_key,images=photos)
             if not created: return
             record_partner_source_event("telegram",chat_id)
@@ -716,12 +721,12 @@ def setup_telegram_webhook():
         webhook=f"{base}/api/telegram/webhook"
         identity=telegram_call("getMe",{})
         TELEGRAM_STATUS.update({"api_ok":bool(identity.get("ok")),"bot_username":str((identity.get("result") or {}).get("username") or ""),"error":""})
-        webhook_result=telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message","channel_post"]})
+        webhook_result=telegram_call("setWebhook",{"url":webhook,"secret_token":WEBHOOK_SECRET,"allowed_updates":["message","channel_post","edited_message","edited_channel_post"]})
         if not webhook_result.get("ok"): raise RuntimeError("telegram_set_webhook_rejected")
         telegram_call("setChatMenuButton",{"menu_button":{"type":"web_app","text":"Открыть КРУГ","web_app":{"url":web_app_url()}}})
         telegram_call("setMyCommands",{"commands":[{"command":"start","description":"Открыть КРУГ"},{"command":"krug_source","description":"Подключить Telegram-группу"}]})
         info=telegram_call("getWebhookInfo",{}).get("result") or {}; allowed=set(info.get("allowed_updates") or [])
-        channel_posts_ok={"message","channel_post"}.issubset(allowed)
+        channel_posts_ok={"message","channel_post","edited_message","edited_channel_post"}.issubset(allowed)
         TELEGRAM_STATUS.update({"webhook_ok":str(info.get("url") or "")==webhook and channel_posts_ok,"channel_posts":channel_posts_ok,"pending_updates":min(int(info.get("pending_update_count") or 0),9999),"last_error":clean_text(info.get("last_error_message") or "",120)})
         print("Telegram webhook configured")
     except Exception as exc:
