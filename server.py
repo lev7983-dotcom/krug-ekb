@@ -19,7 +19,7 @@ DB=Path(os.environ.get("KRUG_DB_PATH",ROOT/"krug.db"))
 DATABASE_URL=os.environ.get("DATABASE_URL","")
 BOT_TOKEN=(os.environ.get("BOT_TOKEN") or os.environ.get("KRUG_BOT_TOKEN") or "").strip()
 PUBLIC_URL=os.environ.get("PUBLIC_URL","https://krug-ekb.onrender.com/index.html")
-APP_RELEASE="v170"
+APP_RELEASE="v171"
 ADMIN_IDS={x.strip() for x in os.environ.get("ADMIN_TELEGRAM_IDS","").split(",") if x.strip()}
 TESTER_IDS=ADMIN_IDS|{x.strip() for x in os.environ.get("KRUG_TESTER_TELEGRAM_IDS","").split(",") if x.strip()}
 ALLOW_DEV_AUTH=os.environ.get("KRUG_ALLOW_DEV_AUTH","")=="1" and not BOT_TOKEN
@@ -425,10 +425,6 @@ def parse_imported_listing(text):
         return int(amount*(1_000_000 if suffix=="млн" else 1_000))
     brand_words=r"toyota|тойота|lada|лада|ваз|ford|форд|kia|киа|hyundai|хендай|bmw|бмв|mercedes|мерседес|renault|рено|nissan|ниссан|volkswagen|фольксваген|audi|ауди|skoda|шкода|chevrolet|шевроле|mazda|мазда|mitsubishi|мицубиси|subaru|субару|lexus|лексус|honda|хонда|opel|опель|peugeot|пежо|citroen|citroën|ситроен|volvo|вольво|suzuki|сузуки|infiniti|инфинити|porsche|порше|land\s+rover|ленд\s+ровер|jeep|джип|daewoo|дэу|datsun|датсун|geely|джили|chery|чери|haval|хавал|exeed|эксид|omoda|омода|changan|чанган|gac|jac|baic|tank|танк|zeekr|зикр|voyah|воя|jetour|джетур|li\s+auto|лисян|great\s+wall|грейт\s+вол|moskvich|москвич|уаз|gaz|газ"
     title=next((line for line in lines if re.search(rf"\b(?:{brand_words})\b",line,re.I)),next((line for line in lines if not line.lower().startswith(("http://","https://"))),""))
-    phone=""
-    if phone_match:
-        try: phone=normalize_phone(phone_match.group(0))
-        except ValueError: pass
     lowered=value.lower()
     transmission="Автомат" if re.search(r"\b(?:акпп|автомат)\b",lowered) else "Механика" if re.search(r"\b(?:мкпп|механик[аи])\b",lowered) else "Робот" if re.search(r"\b(?:робот|dsg)\b",lowered) else "Вариатор" if re.search(r"\b(?:вариатор|cvt)\b",lowered) else ""
     body_type=next((label for pattern,label in ((r"\bседан\b","Седан"),(r"\bх[эе]тчб[еэ]к\b","Хэтчбек"),(r"\bуниверсал\b","Универсал"),(r"\bкроссовер\b","Кроссовер"),(r"\bвнедорожник\b","Внедорожник"),(r"\bминив[эе]н\b","Минивэн"),(r"\bкупе\b","Купе"),(r"\bпикап\b","Пикап")) if re.search(pattern,lowered)),"")
@@ -445,7 +441,7 @@ def parse_imported_listing(text):
     safe_description=value
     if phone_match: safe_description=safe_description.replace(phone_match.group(0),"Контакт указан в оригинале")
     safe_description=re.sub(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b","Контакт указан в оригинале",safe_description,flags=re.I)
-    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":phone,"vin":vin_match.group(1).upper() if vin_match else "","description":safe_description,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
+    return {"name":clean_text(title,80),"year":number(year_match),"price":price_number(price_match),"km":distance_number(km_match),"phone":"","vin":vin_match.group(1).upper() if vin_match else "","description":safe_description,"source_url":clean_text(source_match.group(0),500) if source_match else "","transmission":transmission,"body_type":body_type,"drive":drive,"fuel":fuel,"engine_volume":engine_volume,"engine_power":engine_power,"owners_count":owners_count,"color":color}
 
 def looks_like_vehicle_listing(text):
     value=str(text or "").lower()
@@ -524,7 +520,7 @@ def create_import_draft(user_id,source_type,text,source_url="",import_key="",ima
     """Create a private, user-bound draft. Imported content is never auto-published."""
     parsed=parse_imported_listing(text); now=NOW().isoformat(); parsed["images"]=list(images or [])[:1]
     safe_key=clean_text(import_key,240) or None
-    params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(text,5000),json.dumps(parsed,ensure_ascii=False),now,safe_key)
+    params=(str(user_id),source_type,clean_text(source_url or parsed.get("source_url"),500),clean_text(parsed.get("description"),5000),json.dumps(parsed,ensure_ascii=False),now,safe_key)
     try:
         with connect() as db:
             if safe_key:
